@@ -1,0 +1,30 @@
+        body { background-color: #f1f5f9; overflow: hidden; }
+        .vdi-panel { background-color: #ffffff; border-right: 1px solid #cbd5e1; transition: width 0.3s ease, padding 0.3s ease; }
+        .vdi-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .vdi-input {
+            background-color: #ffffff; border: 1px solid #94a3b8; color: #334155; transition: border-color 0.1s;
+        }
+        input[type="number"], input[type="text"], select { background-color: #fefce8 !important; }
+        .vdi-input:focus { outline: 2px solid #2563eb; border-color: #2563eb; }
+        .tab-active { background-color: #ffffff; color: #2563eb; border: 1px solid #cbd5e1; border-bottom: 2px solid #2563eb; }
+        .tab-inactive { background-color: #e2e8f0; color: #64748b; border: 1px solid transparent; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 0; border: 2px solid #f1f5f9; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        select[multiple] { height: 100px; }
+        .modebar { top: 0px !important; }
+        
+        /* Collapse transitions */
+        .sidebar-collapsed { width: 0 !important; padding: 0 !important; border-right: none !important; overflow: hidden; }
+        .report-collapsed { height: 48px !important; overflow: hidden !important; }
+
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #68D391;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #68D391;
+        }
+    
