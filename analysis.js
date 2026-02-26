@@ -1,4 +1,71 @@
 (function () {
+  function analyzeRawDataset(params) {
+            const {
+              filesData,
+              mergedHeaders,
+              columnMap,
+              tempConfig,
+              headerRows,
+              downsample,
+              filterOutliers
+            } = params;
+
+            const series = { vol:{x:[],y:[]}, cur:{x:[],y:[]}, temps: tempConfig.map(() => ({x:[], y:[]})), maxTempProfile: [], maxTempRate: [] };
+            const f1Instr = [];
+            const f2Instr = [];
+            const addInstr = (colIdx, target, type) => {
+                const src = mergedHeaders[colIdx];
+                if (!src) return;
+                (src.fileIdx === 0 ? f1Instr : f2Instr).push({ colIdx: src.colIdx, target, type });
+            };
+
+            addInstr(columnMap.vol, series.vol, 'vol');
+            if (columnMap.cur !== -1) addInstr(columnMap.cur, series.cur, 'cur');
+            tempConfig.forEach((cfg, i) => addInstr(cfg.headerIdx, series.temps[i], 'temp'));
+
+            const parseFile = (fileIdx, colIndices) => {
+                const fd = filesData[fileIdx];
+                if (!fd || !Array.isArray(fd.rawRows)) return;
+                const headerRow = (headerRows[fileIdx] ?? 1) - 1;
+                const timeHeaderIdx = fileIdx === 0 ? columnMap.time1 : columnMap.time2;
+                const timeColIdx = timeHeaderIdx !== -1 && mergedHeaders[timeHeaderIdx] ? mergedHeaders[timeHeaderIdx].colIdx : -1;
+                if (timeColIdx === -1) return;
+                let t0 = null;
+
+                for (let i = headerRow + 1; i < fd.rawRows.length; i += downsample) {
+                    const row = fd.rawRows[i];
+                    if (!row || !row.trim()) continue;
+                    const cells = row.split(row.includes('\t') ? '\t' : ',');
+                    const tRaw = parseFloat(cells[timeColIdx]);
+                    if (Number.isNaN(tRaw)) continue;
+                    if (t0 === null) t0 = tRaw;
+                    const t = tRaw - t0;
+
+                    colIndices.forEach((item) => {
+                        const val = parseFloat(cells[item.colIdx]);
+                        if (item.type === 'temp' && filterOutliers && (Number.isNaN(val) || val > 1300 || val < -100)) return;
+                        item.target.x.push(t);
+                        item.target.y.push(Number.isNaN(val) ? 0 : val);
+                    });
+                }
+            };
+
+            parseFile(0, f1Instr);
+            if (filesData[1]) parseFile(1, f2Instr);
+
+            for (let i = 0; i < series.vol.x.length; i++) {
+                let maxT = -Infinity;
+                series.temps.forEach((tempSeries) => {
+                    if (tempSeries.y[i] !== undefined && tempSeries.y[i] > maxT) maxT = tempSeries.y[i];
+                });
+                series.maxTempProfile.push(maxT === -Infinity ? 0 : maxT);
+            }
+
+            series.maxTempRate = window.AnalysisModule.calculateDerivative(series.vol.x, series.maxTempProfile);
+            series.temps.forEach((s) => { s.rate = window.AnalysisModule.calculateDerivative(s.x, s.y); });
+            return series;
+  }
+
   function processAndRender(ctx) {
             const { state, els, getHeaderInput, renderCharts } = ctx;
             const { columnMap, tempConfig, mergedHeaders, filesData } = state;
@@ -6,54 +73,15 @@
             
             if (columnMap.time1 === -1 || columnMap.vol === -1) { alert("請設定時間與電壓欄位"); return { series: null, report: null }; }
 
-            const series = { vol:{x:[],y:[]}, cur:{x:[],y:[]}, temps: tempConfig.map(() => ({x:[], y:[]})), maxTempProfile: [], maxTempRate: [] };
-            
-            const parseFile = (fileIdx, colIndices, type) => {
-                const fd = filesData[fileIdx];
-                if (!fd) return;
-                const inputEl = getHeaderInput(fileIdx);
-                const headerRow = parseInt(inputEl.value) - 1;
-                const timeColIdx = fileIdx === 0 ? mergedHeaders[columnMap.time1].colIdx : (columnMap.time2 !== -1 ? mergedHeaders[columnMap.time2].colIdx : -1);
-                if (timeColIdx === -1) return;
-                let t0 = null;
-                for (let i = headerRow + 1; i < fd.rawRows.length; i += downsample) {
-                    const row = fd.rawRows[i]; if(!row || !row.trim()) continue;
-                    const cells = row.split(row.includes('\t') ? '\t' : ',');
-                    let t = parseFloat(cells[timeColIdx]);
-                    if (isNaN(t)) continue;
-                    // Removed conv.t multiplication
-                    if (t0 === null) t0 = t;
-                    t -= t0;
-                    colIndices.forEach(item => {
-                        let val = parseFloat(cells[item.colIdx]);
-                        // Removed conv.v and conv.c multiplications
-                        if (type === 'temp' && els.filterCheckbox.checked && (isNaN(val) || val > 1300 || val < -100)) return;
-                        item.target.x.push(t); item.target.y.push(isNaN(val) ? 0 : val);
-                    });
-                }
-            };
-
-            const f1Instr = [], f2Instr = [];
-            const addInstr = (colIdx, target, type) => (mergedHeaders[colIdx].fileIdx === 0 ? f1Instr : f2Instr).push({ colIdx: mergedHeaders[colIdx].colIdx, target, type });
-            
-            addInstr(columnMap.vol, series.vol, 'vol');
-            if(columnMap.cur !== -1) addInstr(columnMap.cur, series.cur, 'cur');
-            tempConfig.forEach((cfg, i) => addInstr(cfg.headerIdx, series.temps[i], 'temp'));
-
-            parseFile(0, f1Instr);
-            if(filesData[1]) parseFile(1, f2Instr);
-
-            // Calc Max Temp Profile
-            for(let i=0; i<series.vol.x.length; i++) {
-                let maxT = -Infinity;
-                series.temps.forEach(t => {
-                    if(t.y[i] !== undefined && t.y[i] > maxT) maxT = t.y[i];
-                });
-                series.maxTempProfile.push(maxT === -Infinity ? 0 : maxT);
-            }
-            // Calc Derivative
-            series.maxTempRate = window.AnalysisModule.calculateDerivative(series.vol.x, series.maxTempProfile);
-            series.temps.forEach(s => { s.rate = window.AnalysisModule.calculateDerivative(s.x, s.y); });
+            const series = analyzeRawDataset({
+                filesData,
+                mergedHeaders,
+                columnMap,
+                tempConfig,
+                headerRows: [parseInt(getHeaderInput(0).value), parseInt(getHeaderInput(1).value)],
+                downsample,
+                filterOutliers: els.filterCheckbox.checked
+            });
             
             state.processedData = series;
 
@@ -166,5 +194,5 @@
         
   }
 
-  window.AnalysisModule = { processAndRender, calculateDerivative, generateReports };
+  window.AnalysisModule = { processAndRender, calculateDerivative, generateReports, analyzeRawDataset };
 })();
