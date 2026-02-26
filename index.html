@@ -168,6 +168,21 @@
                 <button id="processBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded text-xs shadow-none disabled:bg-slate-300 disabled:cursor-not-allowed" disabled>
                     解析並繪圖
                 </button>
+
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <button id="saveTemplateBtn" class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold py-1.5 rounded text-xs">儲存模板</button>
+                    <label class="bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-bold py-1.5 rounded text-xs text-center cursor-pointer">
+                        載入模板
+                        <input type="file" id="loadTemplateInput" accept=".json,.battery-template.json" class="hidden">
+                    </label>
+                </div>
+
+                <div class="vdi-card p-2 mt-2 space-y-2">
+                    <label class="text-xs font-bold text-slate-700">Batch CSV Summary</label>
+                    <input type="file" id="batchFilesInput" accept=".csv,.txt" multiple class="vdi-input w-full rounded px-2 py-1 text-xs">
+                    <button id="runBatchBtn" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-1.5 rounded text-xs">批次匯出 Summary</button>
+                    <div id="batchResult" class="text-[10px] text-slate-600"></div>
+                </div>
             </section>
 
             <!-- Column Mapping -->
@@ -344,6 +359,48 @@
                 <div class="grid grid-cols-2 gap-3 mt-4">
                     <button id="exportCsvBtn" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded text-xs flex items-center justify-center gap-1 shadow-none">CSV</button>
                     <button id="exportImageBtn" class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 rounded text-xs flex items-center justify-center gap-1 shadow-none">PNG</button>
+                </div>
+            </section>
+
+            <section>
+                <div class="flex items-center gap-2 mb-2 border-b border-slate-200 pb-1">
+                    <span class="bg-slate-200 text-slate-700 w-5 h-5 rounded flex items-center justify-center text-xs font-bold">5</span>
+                    <h2 class="text-sm font-bold text-slate-700">Cell KPI</h2>
+                </div>
+                <div class="vdi-card p-3 space-y-2 text-xs">
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" id="kpiCapacityAh" placeholder="容量 Ah" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiNominalV" placeholder="名義電壓 V" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiMassG" placeholder="質量 g" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiLengthMm" placeholder="長 mm" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiWidthMm" placeholder="寬 mm" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiHeightMm" placeholder="高 mm" class="vdi-input rounded px-2 py-1">
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <input type="number" id="kpiCathodeUm" placeholder="正極厚度 μm" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiAnodeUm" placeholder="負極厚度 μm" class="vdi-input rounded px-2 py-1">
+                        <input type="number" id="kpiSepUm" placeholder="隔離膜厚度 μm" class="vdi-input rounded px-2 py-1">
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="number" id="kpiTargetStackUm" placeholder="目標總厚度 μm" class="vdi-input rounded px-2 py-1 w-full">
+                        <input type="number" id="kpiToleranceUm" placeholder="容差 μm" class="vdi-input rounded px-2 py-1 w-full" value="20">
+                    </div>
+                    <button id="calcKpiBtn" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-1.5 rounded">計算 KPI</button>
+                    <div id="kpiResult" class="text-[11px] text-slate-700"></div>
+                </div>
+            </section>
+
+            <section>
+                <div class="flex items-center gap-2 mb-2 border-b border-slate-200 pb-1">
+                    <span class="bg-slate-200 text-slate-700 w-5 h-5 rounded flex items-center justify-center text-xs font-bold">6</span>
+                    <h2 class="text-sm font-bold text-slate-700">Run History</h2>
+                </div>
+                <div class="vdi-card p-2 space-y-2">
+                    <div class="flex gap-2">
+                        <button id="exportHistoryBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold py-1.5 rounded">匯出歷史 CSV</button>
+                        <button id="clearHistoryBtn" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 rounded">清空歷史</button>
+                    </div>
+                    <div id="historyList" class="max-h-28 overflow-y-auto space-y-1"></div>
                 </div>
             </section>
         </aside>

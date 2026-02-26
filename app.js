@@ -67,16 +67,19 @@
 
         // Reset Logic
         function resetApp() {
+            const keepTemplate = confirm('是否保留目前模板設定（門檻/圖表/標記）？');
             state.files = [null, null];
             state.filesData = [null, null];
             state.wb = [null, null];
             state.mergedHeaders = [];
             state.processedData = null;
             state.reportData = null;
-            state.columnMap = { time1: -1, time2: -1, vol: -1, cur: -1, temps: [] };
-            state.tempConfig = [];
-            state.customAnnotations = [];
-            state.customEvents = [];
+            if (!keepTemplate) {
+                state.columnMap = { time1: -1, time2: -1, vol: -1, cur: -1, temps: [] };
+                state.tempConfig = [];
+                state.customAnnotations = [];
+                state.customEvents = [];
+            }
 
             els.fileInputs.forEach(inp => inp.value = '');
             els.pasteInputs.forEach(inp => inp.value = '');
@@ -85,18 +88,22 @@
             
             els.headerInputs.file[0].value = '';
             els.headerInputs.file[1].value = '';
-            els.thresholdVolDrop.value = '50';
-            els.thresholdT1.value = '1';
-            els.thresholdTtr.value = '10';
+            if (!keepTemplate) {
+                els.thresholdVolDrop.value = '50';
+                els.thresholdT1.value = '1';
+                els.thresholdTtr.value = '10';
+            }
             
             els.rangeVolMin.value = '0'; els.rangeVolMax.value = '5';
             els.rangeTempMin.value = '0'; els.rangeTempMax.value = '500';
             els.rangeCurMin.value = '0'; els.rangeCurMax.value = '50';
             els.rangeRateMin.value = '0'; els.rangeRateMax.value = '50';
             
-            els.annotationList.innerHTML = '';
-            els.eventList.innerHTML = '';
-            els.tempColorSection.innerHTML = '';
+            if (!keepTemplate) {
+                els.annotationList.innerHTML = '';
+                els.eventList.innerHTML = '';
+                els.tempColorSection.innerHTML = '';
+            }
             els.seriesRenameContainer.innerHTML = '';
             els.seriesRenameSection.classList.add('hidden');
             els.mappingSection.classList.add('hidden');
@@ -106,6 +113,14 @@
             isRateChartVisible = true;
             els.toggleRateBtn.textContent = "開啟中";
             els.toggleRateBtn.className = "bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs font-bold hover:bg-slate-300 transition-colors";
+
+            if (keepTemplate) {
+                renderAnnotationList();
+                renderEventList();
+                renderTempColorInputs();
+                renderRateSourceOptions();
+                renderSeriesRenameInputs();
+            }
 
             renderCharts(true);
         }
@@ -118,7 +133,9 @@
                 config: { downsample: 1, filterOutliers: true },
                 inputMode: 'file',
                 customAnnotations: [],
-                customEvents: []
+                customEvents: [],
+                runHistory: [],
+                templateMeta: null
             };
         }
 
@@ -177,7 +194,15 @@
                 thresholdVolDrop: byId('thresholdVolDrop'), thresholdT1: byId('thresholdT1'), thresholdTtr: byId('thresholdTtr'),
                 fontSizeSlider: byId('fontSizeSlider'), fontSizeDisplay: byId('fontSizeDisplay'),
                 colorVol: byId('colorVol'), colorCur: byId('colorCur'), renameVol: byId('renameVol'), renameCur: byId('renameCur'),
-                lineWidthSlider: byId('lineWidthSlider'), lineWidthDisplay: byId('lineWidthDisplay')
+                lineWidthSlider: byId('lineWidthSlider'), lineWidthDisplay: byId('lineWidthDisplay'),
+                saveTemplateBtn: byId('saveTemplateBtn'), loadTemplateInput: byId('loadTemplateInput'),
+                batchFilesInput: byId('batchFilesInput'), runBatchBtn: byId('runBatchBtn'), batchResult: byId('batchResult'),
+                calcKpiBtn: byId('calcKpiBtn'), kpiResult: byId('kpiResult'),
+                kpiCapacityAh: byId('kpiCapacityAh'), kpiNominalV: byId('kpiNominalV'), kpiMassG: byId('kpiMassG'),
+                kpiLengthMm: byId('kpiLengthMm'), kpiWidthMm: byId('kpiWidthMm'), kpiHeightMm: byId('kpiHeightMm'),
+                kpiCathodeUm: byId('kpiCathodeUm'), kpiAnodeUm: byId('kpiAnodeUm'), kpiSepUm: byId('kpiSepUm'),
+                kpiTargetStackUm: byId('kpiTargetStackUm'), kpiToleranceUm: byId('kpiToleranceUm'),
+                historyList: byId('historyList'), exportHistoryBtn: byId('exportHistoryBtn'), clearHistoryBtn: byId('clearHistoryBtn')
             };
         }
 
@@ -256,6 +281,12 @@
         // --- NEW FEATURES LISTENERS ---
         els.addAnnotationBtn.addEventListener('click', addFreeAnnotation);
         els.addEventBtn.addEventListener('click', addEventInputRow);
+        els.saveTemplateBtn.addEventListener('click', saveTemplate);
+        els.loadTemplateInput.addEventListener('change', loadTemplate);
+        els.runBatchBtn.addEventListener('click', runBatchSummary);
+        els.calcKpiBtn.addEventListener('click', calculateKpi);
+        els.exportHistoryBtn.addEventListener('click', exportRunHistoryCSV);
+        els.clearHistoryBtn.addEventListener('click', clearRunHistory);
 
         // --- PREVIEW RESIZE LOGIC ---
         function resizePreview() {
@@ -375,16 +406,27 @@
 
         function parseHeaders() {
             state.mergedHeaders = [];
+            let hasError = false;
             state.filesData.forEach((fd, i) => {
-                if(!fd) return;
+                if(!fd || hasError) return;
                 const inputEl = getHeaderInput(i);
-                const rIdx = parseInt(inputEl.value) - 1;
+                const rIdx = parseInt(inputEl.value, 10) - 1;
+                if (Number.isNaN(rIdx) || rIdx < 0 || rIdx >= fd.rawRows.length) {
+                    hasError = true;
+                    alert(`F${i + 1} Header Row 超出資料範圍，請修正後再試。`);
+                    return;
+                }
                 const row = fd.rawRows[rIdx];
-                if (!row) return;
-                row.split(row.includes('\t') ? '\t' : ',').map(h => h.trim()).forEach((h, cIdx) => {
+                if (!row || !row.trim()) {
+                    hasError = true;
+                    alert(`F${i + 1} Header Row 為空白，請修正後再試。`);
+                    return;
+                }
+                row.split(row.includes('	') ? '	' : ',').map(h => h.trim()).forEach((h, cIdx) => {
                     state.mergedHeaders.push({ label: `[F${i+1}] ${h}`, fileIdx: i, colIdx: cIdx, rawLabel: h });
                 });
             });
+            if (hasError || state.mergedHeaders.length === 0) return;
             populateDropdowns();
             autoMapColumns();
             els.mappingSection.classList.remove('hidden');
@@ -564,7 +606,9 @@
 
         // --- PROCESSING ---
         function processAndRender() {
-            return window.AnalysisModule.processAndRender({ state, els, getHeaderInput, renderCharts });
+            const result = window.AnalysisModule.processAndRender({ state, els, getHeaderInput, renderCharts });
+            if (result && result.series) appendRunHistory(result);
+            return result;
         }
 
         function calculateDerivative(time, values) {
@@ -633,6 +677,301 @@
             const link = document.createElement("a");
             link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
             link.download = `Battery_Data_Export_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+
+        function safeNumber(value) {
+            const n = parseFloat(value);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function calcWh(capacityAh, nominalV) {
+            return capacityAh * nominalV;
+        }
+
+        function calcGravimetricEnergyDensity(wh, massG) {
+            return wh / (massG / 1000);
+        }
+
+        function calcVolumetricEnergyDensity(wh, lengthMm, widthMm, heightMm) {
+            const volumeL = (lengthMm * widthMm * heightMm) / 1e6;
+            return wh / volumeL;
+        }
+
+        function validateThicknessStack(layers, targetTotalUm, toleranceUm) {
+            const total = layers.reduce((sum, item) => sum + item.thicknessUm, 0);
+            const diff = Math.abs(total - targetTotalUm);
+            return { total, diff, pass: diff <= toleranceUm };
+        }
+
+        function calculateKpi() {
+            const capacityAh = safeNumber(els.kpiCapacityAh.value);
+            const nominalV = safeNumber(els.kpiNominalV.value);
+            const massG = safeNumber(els.kpiMassG.value);
+            const lengthMm = safeNumber(els.kpiLengthMm.value);
+            const widthMm = safeNumber(els.kpiWidthMm.value);
+            const heightMm = safeNumber(els.kpiHeightMm.value);
+            const cathodeUm = safeNumber(els.kpiCathodeUm.value) || 0;
+            const anodeUm = safeNumber(els.kpiAnodeUm.value) || 0;
+            const sepUm = safeNumber(els.kpiSepUm.value) || 0;
+            const targetStackUm = safeNumber(els.kpiTargetStackUm.value);
+            const toleranceUm = safeNumber(els.kpiToleranceUm.value) ?? 20;
+
+            if ([capacityAh, nominalV, massG, lengthMm, widthMm, heightMm, targetStackUm].some((v) => v === null)) {
+                els.kpiResult.innerHTML = '<span class="text-red-700">請完整輸入 Ah/V/g/尺寸/目標厚度。</span>';
+                return;
+            }
+
+            try {
+                const wh = calcWh(capacityAh, nominalV);
+                const grav = calcGravimetricEnergyDensity(wh, massG);
+                const vol = calcVolumetricEnergyDensity(wh, lengthMm, widthMm, heightMm);
+                const stack = validateThicknessStack([
+                    { name: 'Cathode', thicknessUm: cathodeUm },
+                    { name: 'Anode', thicknessUm: anodeUm },
+                    { name: 'Separator', thicknessUm: sepUm }
+                ], targetStackUm, toleranceUm);
+
+                els.kpiResult.innerHTML = `
+                    <div>Energy: <b>${wh.toFixed(3)} Wh</b></div>
+                    <div>Wh/kg: <b>${grav.toFixed(2)}</b></div>
+                    <div>Wh/L: <b>${vol.toFixed(2)}</b></div>
+                    <div class="${stack.pass ? 'text-emerald-700' : 'text-red-700'}">
+                        Stack: ${stack.total.toFixed(1)} μm (目標 ${targetStackUm.toFixed(1)} ± ${toleranceUm.toFixed(1)} μm)
+                    </div>
+                `;
+            } catch (err) {
+                els.kpiResult.innerHTML = `<span class="text-red-700">KPI 計算失敗: ${err.message}</span>`;
+            }
+        }
+
+        function serializeState() {
+            return {
+                version: '1.0.0',
+                createdAt: new Date().toISOString(),
+                columnMap: state.columnMap,
+                tempConfig: state.tempConfig,
+                customEvents: state.customEvents,
+                customAnnotations: state.customAnnotations,
+                thresholds: {
+                    volDrop: els.thresholdVolDrop.value,
+                    t1: els.thresholdT1.value,
+                    ttr: els.thresholdTtr.value
+                },
+                chart: {
+                    titleX: els.titleX.value, titleVol: els.titleVol.value, titleTemp: els.titleTemp.value, titleCur: els.titleCur.value, titleRate: els.titleRate.value,
+                    rangeTimeMin: els.rangeTimeMin.value, rangeTimeMax: els.rangeTimeMax.value,
+                    rangeVolMin: els.rangeVolMin.value, rangeVolMax: els.rangeVolMax.value,
+                    rangeTempMin: els.rangeTempMin.value, rangeTempMax: els.rangeTempMax.value,
+                    rangeCurMin: els.rangeCurMin.value, rangeCurMax: els.rangeCurMax.value,
+                    rangeRateMin: els.rangeRateMin.value, rangeRateMax: els.rangeRateMax.value,
+                    lineWidth: els.lineWidthSlider.value, fontSize: els.fontSizeSlider.value,
+                    colorVol: els.colorVol.value, colorCur: els.colorCur.value, rateSource: els.rateSourceSelect.value
+                }
+            };
+        }
+
+        function applyState(config) {
+            if (!config || !config.columnMap || !config.chart || !config.thresholds) throw new Error('模板格式錯誤');
+            state.columnMap = config.columnMap;
+            state.tempConfig = Array.isArray(config.tempConfig) ? config.tempConfig : [];
+            state.customEvents = Array.isArray(config.customEvents) ? config.customEvents : [];
+            state.customAnnotations = Array.isArray(config.customAnnotations) ? config.customAnnotations : [];
+            els.thresholdVolDrop.value = config.thresholds.volDrop ?? '50';
+            els.thresholdT1.value = config.thresholds.t1 ?? '1';
+            els.thresholdTtr.value = config.thresholds.ttr ?? '10';
+
+            Object.entries(config.chart).forEach(([key, val]) => { if (els[key] && val !== undefined) els[key].value = val; });
+            if (Array.isArray(state.mergedHeaders) && state.mergedHeaders.length) {
+                populateDropdowns();
+                updateColumnMappingFromUI(false);
+            }
+            renderAnnotationList();
+            renderEventList();
+            renderTempColorInputs();
+            renderRateSourceOptions();
+            renderSeriesRenameInputs();
+            if (state.processedData) {
+                generateReports(state.processedData);
+                renderCharts();
+            }
+        }
+
+        function saveTemplate() {
+            try {
+                const payload = serializeState();
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `battery-template-${new Date().toISOString().slice(0,10)}.battery-template.json`;
+                link.click();
+            } catch (err) {
+                alert(`模板儲存失敗: ${err.message}`);
+            }
+        }
+
+        function loadTemplate(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const data = JSON.parse(reader.result);
+                    applyState(data);
+                    state.templateMeta = { fileName: file.name, loadedAt: new Date().toISOString() };
+                } catch (err) {
+                    alert(`模板載入失敗: ${err.message}`);
+                } finally {
+                    els.loadTemplateInput.value = '';
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function parseBatchCsvText(text) {
+            const rows = text.split(/\r\n|\n/).filter((row) => row.trim());
+            if (!rows.length) throw new Error('CSV 無資料列');
+            const header = rows[0].split(rows[0].includes('	') ? '	' : ',').map((s) => s.trim());
+            const mergedHeaders = header.map((h, idx) => ({ label: `[F1] ${h}`, fileIdx: 0, colIdx: idx, rawLabel: h }));
+            const hLower = header.map((h) => h.toLowerCase());
+            const find = (keys) => hLower.findIndex((h) => keys.some((k) => h.includes(k)));
+            const time1 = find(['time', '時間']);
+            const vol = find(['vol', 'volt', '電壓']);
+            if (time1 === -1 || vol === -1) throw new Error('找不到時間/電壓欄位');
+            const cur = find(['cur', 'current', '電流']);
+            const tempIndices = [];
+            hLower.forEach((h, i) => { if (['temp', 't1', 't2', 'aux', '溫度'].some((k) => h.includes(k))) tempIndices.push(i); });
+            if (!tempIndices.length) throw new Error('找不到溫度欄位');
+            return {
+                filesData: [{ rawRows: rows }, null],
+                mergedHeaders,
+                columnMap: { time1, time2: -1, vol, cur, temps: tempIndices },
+                tempConfig: tempIndices.map((idx) => ({ headerIdx: idx, label: header[idx], color: '#d62728' })),
+                headerRows: [1, 1],
+                tempIndices
+            };
+        }
+
+        async function runBatchSummary() {
+            const files = Array.from(els.batchFilesInput.files || []);
+            if (!files.length) {
+                els.batchResult.textContent = '請先選擇至少一個 CSV。';
+                return;
+            }
+            const rows = [];
+            const errors = [];
+            for (const file of files) {
+                try {
+                    const text = await file.text();
+                    const parsed = parseBatchCsvText(text);
+                    const series = window.AnalysisModule.analyzeRawDataset({
+                        filesData: parsed.filesData,
+                        mergedHeaders: parsed.mergedHeaders,
+                        columnMap: parsed.columnMap,
+                        tempConfig: parsed.tempConfig,
+                        headerRows: parsed.headerRows,
+                        downsample: parseInt(els.downsampleSelect.value) || 1,
+                        filterOutliers: els.filterCheckbox.checked
+                    });
+                    const tempMax = series.maxTempProfile.length ? Math.max(...series.maxTempProfile) : 0;
+                    const reportState = { tempConfig: parsed.tempConfig, reportData: [] };
+                    const mockEls = { thresholdVolDrop: els.thresholdVolDrop, thresholdT1: els.thresholdT1, thresholdTtr: els.thresholdTtr, globalVolDrop: { textContent: '-' }, reportTableBody: { innerHTML: '' } };
+                    const result = window.AnalysisModule.generateReports(series, { state: reportState, els: mockEls });
+                    const first = reportState.reportData[0] || {};
+                    let outlierCount = 0;
+                    parsed.filesData[0].rawRows.slice(1).forEach((row) => {
+                        const cells = row.split(row.includes('	') ? '	' : ',');
+                        parsed.tempIndices.forEach((idx) => {
+                            const val = parseFloat(cells[idx]);
+                            if (Number.isFinite(val) && (val > 1300 || val < -100)) outlierCount += 1;
+                        });
+                    });
+                    rows.push({
+                        fileName: file.name,
+                        maxTemp: tempMax,
+                        t1: first.t1 ? first.t1.t : null,
+                        ttr: first.ttr ? first.ttr.t : null,
+                        ocvDropAt: result.volDropTime,
+                        outlierCount,
+                        length: series.vol.x.length
+                    });
+                } catch (err) {
+                    errors.push(`${file.name}: ${err.message}`);
+                }
+            }
+
+            if (!rows.length) {
+                els.batchResult.innerHTML = `<span class='text-red-700'>批次失敗：${errors.join(' | ')}</span>`;
+                return;
+            }
+
+            let csv = 'File,MaxTempC,T1_s,Ttr_s,OCVDrop_s,OutlierCount,DataLength\n';
+            rows.forEach((r) => {
+                csv += `${r.fileName},${(r.maxTemp ?? '').toString()},${r.t1 ?? ''},${r.ttr ?? ''},${r.ocvDropAt ?? ''},${r.outlierCount},${r.length}\n`;
+            });
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            link.download = `batch_summary_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+
+            els.batchResult.innerHTML = `<span class='text-emerald-700'>完成 ${rows.length} 檔</span>${errors.length ? `<br><span class='text-red-700'>錯誤: ${errors.join(' | ')}</span>` : ''}`;
+        }
+
+        function appendRunHistory(processResult) {
+            const summary = {
+                id: Date.now() + Math.random(),
+                timestamp: new Date().toISOString(),
+                source: state.inputMode === 'file' ? (state.files.filter(Boolean).map((f) => f.name).join(' + ') || 'manual') : 'paste',
+                thresholdVolDrop: parseFloat(els.thresholdVolDrop.value),
+                thresholdT1: parseFloat(els.thresholdT1.value),
+                thresholdTtr: parseFloat(els.thresholdTtr.value),
+                ocvDrop: els.globalVolDrop.textContent,
+                maxTemp: (state.reportData || []).length ? Math.max(...state.reportData.map((r) => r.maxT || 0)) : 0
+            };
+            state.runHistory.unshift(summary);
+            state.runHistory = state.runHistory.slice(0, 50);
+            renderRunHistory();
+        }
+
+        function renderRunHistory() {
+            els.historyList.innerHTML = '';
+            state.runHistory.forEach((item) => {
+                const el = document.createElement('div');
+                el.className = 'text-[10px] bg-white border border-slate-200 rounded p-1';
+                el.innerHTML = `
+                    <div class='flex justify-between'>
+                        <span class='font-bold'>${item.source}</span>
+                        <button class='text-red-600 font-bold' data-id='${item.id}'>×</button>
+                    </div>
+                    <div>${item.timestamp.slice(0,19).replace('T',' ')}</div>
+                    <div>MaxT: ${item.maxTemp.toFixed(1)}°C | OCV: ${item.ocvDrop}</div>
+                `;
+                el.querySelector('button').addEventListener('click', () => removeRunHistory(item.id));
+                els.historyList.appendChild(el);
+            });
+        }
+
+        function removeRunHistory(id) {
+            state.runHistory = state.runHistory.filter((item) => item.id !== id);
+            renderRunHistory();
+        }
+
+        function clearRunHistory() {
+            state.runHistory = [];
+            renderRunHistory();
+        }
+
+        function exportRunHistoryCSV() {
+            if (!state.runHistory.length) return;
+            let csv = 'Timestamp,Source,ThresholdVolDrop,ThresholdT1,ThresholdTtr,MaxTemp,OCVDrop\n';
+            state.runHistory.forEach((item) => {
+                csv += `${item.timestamp},${item.source},${item.thresholdVolDrop},${item.thresholdT1},${item.thresholdTtr},${item.maxTemp},${item.ocvDrop}\n`;
+            });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            link.download = `run_history_${new Date().toISOString().slice(0,10)}.csv`;
             link.click();
         }
 
