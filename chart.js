@@ -1,6 +1,6 @@
 (function () {
   function renderCharts(input) {
-    const { state, els, isEmpty=false } = input;
+    const { state, els, isEmpty=false, isRateChartVisible=true } = input;
 
             const lineWidth = parseFloat(els.lineWidthSlider.value) || 2.5;
             const layoutConfig = {
