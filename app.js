@@ -976,5 +976,5 @@
         }
 
         function renderCharts(isEmpty = false) {
-            return window.ChartModule.renderCharts({ state, els, isEmpty });
+            return window.ChartModule.renderCharts({ state, els, isEmpty, isRateChartVisible });
         }
