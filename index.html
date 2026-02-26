@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battery Safety Analysis Tool (VDI Optimized v8.0.4)</title>
+    
+    <!-- 
+        ================================================================
+        [離線部署指南 v8.0.4]
+        1. 下載 Plotly: https://cdn.plot.ly/plotly-2.27.0.min.js -> 存為 plotly-2.27.0.min.js
+        2. 下載 Tailwind: https://cdn.tailwindcss.com -> 存為 tailwind.js
+        3. 下載 SheetJS: https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js -> 存為 xlsx.full.min.js
+        4. 將上述三檔案與本 HTML 放同一資料夾
+        5. 切換下方註解 (Comment out Mode 1, Uncomment Mode 2)
+        ================================================================
+    -->
+
+    <!-- ========================================== -->
+    <!--        MODE 1: ONLINE (預設/有網路用)      -->
+    <!-- ========================================== -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <!-- ========================================== -->
+    <!--        MODE 2: OFFLINE (VDI 離線環境用)        -->
+    <!--    (請將上方 MODE 1 註解掉，並解除下方註解)      -->
+    <!-- ========================================== -->
+    <!-- <script src="plotly-2.27.0.min.js"></script> -->
+    <!-- <script src="tailwind.js"></script> -->
+    <!-- <script src="xlsx.full.min.js"></script> -->
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1e293b' }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #f1f5f9; overflow: hidden; }
+        .vdi-panel { background-color: #ffffff; border-right: 1px solid #cbd5e1; transition: width 0.3s ease, padding 0.3s ease; }
+        .vdi-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .vdi-input {
+            background-color: #ffffff; border: 1px solid #94a3b8; color: #334155; transition: border-color 0.1s;
+        }
+        input[type="number"], input[type="text"], select { background-color: #fefce8 !important; }
+        .vdi-input:focus { outline: 2px solid #2563eb; border-color: #2563eb; }
+        .tab-active { background-color: #ffffff; color: #2563eb; border: 1px solid #cbd5e1; border-bottom: 2px solid #2563eb; }
+        .tab-inactive { background-color: #e2e8f0; color: #64748b; border: 1px solid transparent; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 0; border: 2px solid #f1f5f9; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        select[multiple] { height: 100px; }
+        .modebar { top: 0px !important; }
+        
+        /* Collapse transitions */
+        .sidebar-collapsed { width: 0 !important; padding: 0 !important; border-right: none !important; overflow: hidden; }
+        .report-collapsed { height: 48px !important; overflow: hidden !important; }
+
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #68D391;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #68D391;
+        }
+    </style>
+</head>
+<body class="text-slate-800 font-sans h-screen flex box-border">
+
+    <!-- Sidebar -->
+    <aside id="sidebarPanel" class="w-96 vdi-panel flex flex-col z-20 overflow-hidden shrink-0 h-full relative">
+        <!-- Header -->
+        <div class="p-4 border-b border-slate-300 bg-slate-800 text-white flex justify-between items-center shrink-0">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-lg font-bold tracking-wide">安全性數據分析</h1>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">VDI Optimized v8.0.4</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="resetApp()" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm transition-colors border border-red-800">
+                    重置
+                </button>
+                <button onclick="toggleSidebar()" class="text-slate-400 hover:text-white" title="收合側邊欄">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-3 space-y-4">
+            
+            <!-- 1. Data Import -->
+            <section>
+                <div class="flex items-center gap-2 mb-2 border-b border-slate-200 pb-1">
+                    <span class="bg-slate-200 text-slate-700 w-5 h-5 rounded flex items-center justify-center text-xs font-bold">1</span>
+                    <h2 class="text-sm font-bold text-slate-700">數據導入</h2>
+                </div>
+                
+                <div class="vdi-card p-2 mb-3">
+                    <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+                        <div>
+                            <label class="block text-slate-600 mb-1">編碼 (CSV)</label>
+                            <select id="encodingSelect" class="vdi-input w-full rounded px-2 py-1">
+                                <option value="UTF-8">UTF-8</option>
+                                <option value="Big5">Big5 (繁體)</option>
+                                <option value="GBK">GBK (簡體)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 mb-1">數據壓縮</label>
+                            <select id="downsampleRate" class="vdi-input w-full rounded px-2 py-1">
+                                <option value="1">無 (Raw)</option>
+                                <option value="5">1/5</option>
+                                <option value="10">1/10</option>
+                                <option value="100">1/100</option>
+                                <option value="1000">1/1000</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex bg-slate-200 rounded p-1 mb-2 gap-1">
+                        <button id="modeFileBtn" class="flex-1 py-1 text-xs font-bold rounded tab-active">檔案導入</button>
+                        <button id="modePasteBtn" class="flex-1 py-1 text-xs font-bold rounded tab-inactive">手動貼上</button>
+                    </div>
+
+                    <!-- Mode A: File -->
+                    <div id="modeFileContent">
+                        <div class="mb-2 p-2 bg-white border border-slate-300 rounded">
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-xs font-bold">主檔 (File 1)</label>
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[10px]">Row:</label>
+                                    <input type="number" id="headerRowIndex1" class="vdi-input w-12 text-center rounded py-0.5 px-1 text-[10px]" placeholder="Auto" min="1">
+                                </div>
+                            </div>
+                            <input type="file" id="fileInput1" accept=".csv, .xlsx, .xlsm" class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border file:border-slate-300 file:text-[10px] file:bg-slate-100 hover:file:bg-slate-200 cursor-pointer"/>
+                            <div id="sheetSelectContainer1" class="mt-1 hidden">
+                                <select id="sheetSelect1" class="vdi-input w-full text-xs rounded p-1"></select>
+                            </div>
+                        </div>
+                        <div class="p-2 bg-white border border-slate-300 rounded">
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-xs font-bold">副檔 (File 2) <span class="text-[10px] font-normal text-slate-400">選填</span></label>
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[10px]">Row:</label>
+                                    <input type="number" id="headerRowIndex2" class="vdi-input w-12 text-center rounded py-0.5 px-1 text-[10px]" placeholder="Auto" min="1">
+                                </div>
+                            </div>
+                            <input type="file" id="fileInput2" accept=".csv, .xlsx, .xlsm" class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border file:border-slate-300 file:text-[10px] file:bg-slate-100 hover:file:bg-slate-200 cursor-pointer"/>
+                            <div id="sheetSelectContainer2" class="mt-1 hidden">
+                                <select id="sheetSelect2" class="vdi-input w-full text-xs rounded p-1"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mode B: Paste -->
+                    <div id="modePasteContent" class="hidden">
+                        <div class="mb-2 p-2 bg-white border border-slate-300 rounded">
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-xs font-bold">主數據 (貼上)</label>
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[10px]">Row:</label>
+                                    <input type="number" id="headerRowIndex1_paste" class="vdi-input w-12 text-center rounded py-0.5 px-1 text-[10px]" placeholder="Auto" min="1">
+                                </div>
+                            </div>
+                            <textarea id="pasteInput1" class="vdi-input w-full h-20 text-[10px] p-1 font-mono whitespace-nowrap overflow-x-auto rounded" placeholder="Excel 數據貼上..."></textarea>
+                        </div>
+                        <div class="p-2 bg-white border border-slate-300 rounded">
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-xs font-bold">副數據 (選填)</label>
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[10px]">Row:</label>
+                                    <input type="number" id="headerRowIndex2_paste" class="vdi-input w-12 text-center rounded py-0.5 px-1 text-[10px]" placeholder="Auto" min="1">
+                                </div>
+                            </div>
+                            <textarea id="pasteInput2" class="vdi-input w-full h-20 text-[10px] p-1 font-mono whitespace-nowrap overflow-x-auto rounded" placeholder="副數據..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center mb-2">
+                    <input type="checkbox" id="filterOutliers" checked class="mr-2">
+                    <label for="filterOutliers" class="text-xs text-slate-700 cursor-pointer select-none">過濾異常 (>1300°C)</label>
+                </div>
+                
+                <button id="processBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded text-xs shadow-none disabled:bg-slate-300 disabled:cursor-not-allowed" disabled>
+                    解析並繪圖
+                </button>
+            </section>
+
+            <!-- Column Mapping -->
+            <section id="columnMappingSection" class="hidden">
+                <div class="vdi-card p-3 space-y-2">
+                    <h3 class="text-xs font-bold text-slate-700 border-b border-slate-200 pb-1 mb-2">欄位確認</h3>
+                    
+                    <div class="space-y-2 text-xs">
+                        <div><span class="block text-slate-600 mb-0.5 font-bold">X軸 (Time)</span><select id="mapTime1" class="vdi-input w-full rounded p-1"></select></div>
+                        <div id="f2TimeContainer" class="hidden"><span class="block text-slate-600 mb-0.5 font-bold">X軸 (F2)</span><select id="mapTime2" class="vdi-input w-full rounded p-1"></select></div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><span class="block text-slate-600 mb-0.5 text-blue-700 font-bold">左Y軸 (Vol)</span><select id="mapVol" class="vdi-input w-full rounded p-1"></select></div>
+                            <div><span class="block text-slate-600 mb-0.5 text-red-700 font-bold">右Y軸(外) (Cur)</span><select id="mapCur" class="vdi-input w-full rounded p-1"><option value="-1">-- 無 --</option></select></div>
+                        </div>
+                        <div><span class="block text-slate-600 mb-0.5 font-bold text-orange-600">右Y軸(內) (Temp, Multi)</span><select id="mapTemp" multiple class="vdi-input w-full rounded p-1 h-20 text-[10px]"></select></div>
+                    </div>
+                    <button id="applyMappingBtn" class="w-full mt-2 bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 rounded text-xs">欄位確認</button>
+                </div>
+            </section>
+
+            <!-- 2. Settings -->
+            <section>
+                <div class="flex items-center gap-2 mb-2 border-b border-slate-200 pb-1">
+                    <span class="bg-slate-200 text-slate-700 w-5 h-5 rounded flex items-center justify-center text-xs font-bold">2</span>
+                    <h2 class="text-sm font-bold text-slate-700">分析設定</h2>
+                </div>
+
+                <div class="vdi-card p-3 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs text-slate-700">OCV Drop (mV/1s)</label>
+                        <input type="number" id="thresholdVolDrop" value="50" class="vdi-input w-16 text-center rounded py-0.5 text-xs">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 text-center">
+                        <div class="bg-white border border-slate-200 p-1 rounded"><label class="text-[9px] text-slate-500 block">Trigger (T<sub>1</sub>)</label><input type="number" id="thresholdT1" value="1" step="0.1" class="vdi-input w-full text-center py-0.5 text-[10px] border-0 focus:ring-0"></div>
+                        <div class="bg-white border border-slate-200 p-1 rounded"><label class="text-[9px] text-slate-500 block">Runaway (T<sub>tr</sub>)</label><input type="number" id="thresholdTtr" value="10" step="1" class="vdi-input w-full text-center py-0.5 text-[10px] border-0 focus:ring-0"></div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500 block mb-1">副圖表來源 (兼事件溫度來源)</label>
+                        <select id="rateSource" class="vdi-input w-full text-xs rounded py-1 px-2"><option value="max">Max Profile</option></select>
+                    </div>
+                    
+                    <!-- Toggle Rate Chart -->
+                    <div class="flex items-center justify-between border-t border-slate-200 pt-2 mt-2">
+                        <label class="text-xs text-slate-700 font-bold">副圖表 (Rate)</label>
+                        <button id="toggleRateBtn" class="bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs font-bold hover:bg-slate-300 transition-colors" onclick="toggleRateChart()">
+                            開啟中
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Styling -->
+            <section>
+                <div class="flex items-center gap-2 mb-2 border-b border-slate-200 pb-1">
+                    <span class="bg-slate-200 text-slate-700 w-5 h-5 rounded flex items-center justify-center text-xs font-bold">3</span>
+                    <h2 class="text-sm font-bold text-slate-700">圖表外觀</h2>
+                </div>
+
+                <div class="vdi-card p-3 space-y-4">
+                    <!-- Titles -->
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">座標軸標題</label>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <input type="text" id="titleX" value="Time (s)" class="vdi-input rounded px-2 py-1">
+                            <input type="text" id="titleVol" value="Voltage (V)" class="vdi-input rounded px-2 py-1">
+                            <input type="text" id="titleTemp" value="Temperature (°C)" class="vdi-input rounded px-2 py-1">
+                            <input type="text" id="titleCur" value="Current (A)" class="vdi-input rounded px-2 py-1">
+                            <input type="text" id="titleRate" value="dT/dt (°C/min)" class="vdi-input rounded px-2 py-1 col-span-2">
+                        </div>
+                    </div>
+                    <!-- Series Rename (Hidden by default) -->
+                    <div id="seriesRenameSection" class="hidden">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">曲線更名</label>
+                        <div id="seriesRenameContainer" class="space-y-1 max-h-32 overflow-y-auto pr-1"></div>
+                    </div>
+                    <!-- Size -->
+                    <div class="space-y-2 text-xs">
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] text-slate-500">導出尺寸 (cm @ 300DPI)</label>
+                            <label class="flex items-center gap-1 text-[10px] text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="lockRatio" checked class="rounded border-slate-300"> 鎖定比例
+                            </label>
+                        </div>
+                        
+                        <div class="flex gap-2 justify-between items-center mb-1">
+                             <div class="flex gap-1 bg-slate-100 p-0.5 rounded">
+                                <button class="text-[9px] px-1.5 py-0.5 rounded hover:bg-white transition-colors ratio-btn" data-ratio="1.777">16:9</button>
+                                <button class="text-[9px] px-1.5 py-0.5 rounded hover:bg-white transition-colors ratio-btn" data-ratio="1.333">4:3</button>
+                                <button class="text-[9px] px-1.5 py-0.5 rounded hover:bg-white transition-colors ratio-btn" data-ratio="1">1:1</button>
+                            </div>
+                            <div class="flex gap-1">
+                                <input type="number" id="chartWidth" value="16" step="0.5" class="vdi-input w-14 rounded px-1 py-1 text-right" placeholder="寬">
+                                <span class="self-center text-slate-400">x</span>
+                                <input type="number" id="chartHeight" value="8" step="0.5" class="vdi-input w-14 rounded px-1 py-1 text-right" placeholder="高">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-[10px] text-slate-500 block text-right">X軸範圍</label>
+                            <div class="flex gap-1 justify-end"><input type="number" id="rangeTimeMin" placeholder="0" class="vdi-input w-16 rounded px-1 py-1 text-right"><input type="number" id="rangeTimeMax" placeholder="Max" class="vdi-input w-16 rounded px-1 py-1 text-right"></div>
+                        </div>
+                    </div>
+                    <!-- Y Ranges -->
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase">Y軸範圍 (固定)</label>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[10px] text-blue-600 font-bold">Vol</span><div class="flex gap-1"><input type="number" id="rangeVolMin" value="0" class="vdi-input w-24 rounded px-1 py-1 text-right"><input type="number" id="rangeVolMax" value="5" class="vdi-input w-24 rounded px-1 py-1 text-right"></div></div>
+                            <div class="flex items-center justify-between gap-2"><span class="text-[10px] text-orange-500 font-bold">Temp</span><div class="flex gap-1"><input type="number" id="rangeTempMin" value="0" class="vdi-input w-24 rounded px-1 py-1 text-right"><input type="number" id="rangeTempMax" value="500" class="vdi-input w-24 rounded px-1 py-1 text-right"></div></div>
+                            <div class="flex items-center justify-between gap-2"><span class="text-[10px] text-red-600 font-bold">Cur</span><div class="flex gap-1"><input type="number" id="rangeCurMin" value="0" class="vdi-input w-24 rounded px-1 py-1 text-right"><input type="number" id="rangeCurMax" value="50" class="vdi-input w-24 rounded px-1 py-1 text-right"></div></div>
+                            <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-300 border-dashed"><span class="text-[10px] text-orange-600 font-bold">Rate</span><div class="flex gap-1"><input type="number" id="rangeRateMin" value="0" class="vdi-input w-24 rounded px-1 py-1 text-right"><input type="number" id="rangeRateMax" value="50" class="vdi-input w-24 rounded px-1 py-1 text-right"></div></div>
+                        </div>
+                    </div>
+                    <!-- Colors -->
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase block">顏色設定</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded"><input type="color" id="colorVol" value="#0000FF" class="w-5 h-5 rounded cursor-pointer border-none bg-transparent"><span class="text-[10px]">Vol</span></div>
+                            <div class="flex items-center gap-1 bg-white border border-slate-300 p-1 rounded"><input type="color" id="colorCur" value="#FF0000" class="w-5 h-5 rounded cursor-pointer border-none bg-transparent"><span class="text-[10px]">Cur</span></div>
+                        </div>
+                        <div id="tempColorSection" class="max-h-24 overflow-y-auto pr-1 space-y-1"></div>
+                        
+                        <div class="mt-2 flex items-center gap-2">
+                            <label class="text-[10px] text-slate-500 whitespace-nowrap">字體大小</label>
+                            <input type="range" id="fontSizeSlider" min="10" max="24" value="16" class="flex-1 h-1 bg-slate-300 rounded-lg appearance-none cursor-pointer">
+                            <span id="fontSizeDisplay" class="text-[10px] text-slate-600 w-4 font-mono">16</span>
+                        </div>
+                        
+                        <div class="mt-2 flex items-center gap-2">
+                            <label class="text-[10px] text-slate-500 whitespace-nowrap">曲線粗細</label>
+                            <input type="range" id="lineWidthSlider" min="0.5" max="5.0" step="0.5" value="2.5" class="flex-1 h-1 bg-slate-300 rounded-lg appearance-none cursor-pointer">
+                            <span id="lineWidthDisplay" class="text-[10px] text-slate-600 w-4 font-mono">2.5</span>
+                        </div>
+                    </div>
+                    <button id="updateRangeBtn" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 rounded text-xs shadow-none">更新圖表與報告</button>
+                </div>
+            </section>
+
+            <!-- 4. Annotations & Events -->
+            <section class="pb-10">
+                <div class="flex items-center gap-2 mb-2 border-b border-slate-200 pb-1">
+                    <span class="bg-slate-200 text-slate-700 w-5 h-5 rounded flex items-center justify-center text-xs font-bold">4</span>
+                    <h2 class="text-sm font-bold text-slate-700">自訂標記</h2>
+                </div>
+
+                <div class="vdi-card p-3 space-y-4">
+                    <!-- Text Box -->
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-500">新增文字方塊 (可拖曳)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="annotationInput" placeholder="輸入文字..." class="vdi-input w-full rounded px-2 py-1 text-xs">
+                            <input type="number" id="annotationSizeInput" value="16" min="8" max="40" class="vdi-input w-10 text-center rounded px-0 py-1 text-xs" title="Font Size">
+                            <button id="addAnnotationBtn" class="bg-blue-600 hover:bg-blue-700 text-white w-8 rounded text-xs font-bold flex items-center justify-center shadow-sm transition-colors">+</button>
+                        </div>
+                        <!-- List -->
+                        <div id="annotationList" class="space-y-1 max-h-24 overflow-y-auto pt-1 mt-1"></div>
+                    </div>
+
+                    <!-- Event Markers -->
+                    <div class="space-y-2 pt-2 border-t border-slate-200">
+                        <label class="text-[10px] font-bold text-slate-500">事件標記 (自動產生資訊框)</label>
+                        <div class="flex gap-2 mb-1">
+                            <input type="number" id="newEventTime" placeholder="秒數" class="vdi-input w-16 text-center rounded py-1 text-xs">
+                            <input type="text" id="newEventLabel" placeholder="事件名稱" class="vdi-input w-full rounded py-1 px-1 text-xs">
+                            <input type="number" id="eventSizeInput" value="12" min="8" max="40" class="vdi-input w-10 text-center rounded px-0 py-1 text-xs" title="Font Size">
+                            <button id="addEventBtn" class="bg-blue-600 hover:bg-blue-700 text-white w-8 rounded font-bold text-xs flex items-center justify-center shadow-sm transition-colors">+</button>
+                        </div>
+                        <!-- List -->
+                        <div id="eventList" class="space-y-1 max-h-24 overflow-y-auto"></div>
+                    </div>
+                </div>
+
+                <!-- Export -->
+                <div class="grid grid-cols-2 gap-3 mt-4">
+                    <button id="exportCsvBtn" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 rounded text-xs flex items-center justify-center gap-1 shadow-none">CSV</button>
+                    <button id="exportImageBtn" class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 rounded text-xs flex items-center justify-center gap-1 shadow-none">PNG</button>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col h-full bg-slate-100 p-2 overflow-auto relative">
+            <!-- Sidebar Expand Button -->
+            <button id="sidebarExpandBtn" onclick="toggleSidebar()" class="absolute top-2 left-2 z-30 bg-slate-700 hover:bg-slate-800 text-white p-2 rounded shadow-md hidden" title="展開側邊欄">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+            </button>
+
+            <!-- Chart Wrapper: Supports Aspect Ratio Locking -->
+            <div id="chartWrapper" class="flex-1 bg-slate-200 border border-slate-300 rounded mb-2 p-4 relative overflow-hidden flex items-center justify-center">
+                <div id="chartContainer" class="relative z-10 bg-white shadow-xl"></div>
+            </div>
+            
+            <div id="reportPanel" class="shrink-0 h-48 bg-white border border-slate-300 rounded p-4 overflow-y-auto transition-all duration-300">
+                <div class="flex items-center justify-between mb-4 border-b border-slate-200 pb-2">
+                    <h3 class="text-base font-bold text-slate-800 flex items-center">關鍵數據分析報告</h3>
+                    <div class="flex items-center gap-2">
+                        <div class="bg-blue-50 px-3 py-1 rounded border border-blue-100 text-xs font-bold text-blue-800">OCV drop : <span id="globalVolDrop" class="ml-1 text-black">-</span></div>
+                        <button onclick="toggleReport()" class="text-slate-400 hover:text-slate-600 focus:outline-none ml-2">
+                            <svg id="reportToggleIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto border border-slate-200 rounded">
+                    <table class="min-w-full text-xs text-left text-slate-700">
+                        <thead class="bg-slate-100 text-slate-700 uppercase font-bold tracking-wider">
+                            <tr>
+                                <th class="px-4 py-2 border-b border-slate-200">Channel</th>
+                                <th class="px-4 py-2 border-b border-slate-200">Trigger (T<sub>1</sub>)</th>
+                                <th class="px-4 py-2 border-b border-slate-200 text-red-800">Runaway (T<sub>tr</sub>)</th>
+                                <th class="px-4 py-2 border-b border-slate-200 text-red-600">Max Temp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Toggle Functions
+        let isSidebarOpen = true;
+        let isReportOpen = true;
+        let isRateChartVisible = true; 
+        // Debounce for resize
+        let resizeTimeout;
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebarPanel');
+            const expandBtn = document.getElementById('sidebarExpandBtn');
+            isSidebarOpen = !isSidebarOpen;
+            
+            if (isSidebarOpen) {
+                sidebar.classList.remove('sidebar-collapsed');
+                expandBtn.classList.add('hidden');
+            } else {
+                sidebar.classList.add('sidebar-collapsed');
+                expandBtn.classList.remove('hidden');
+            }
+            
+            setTimeout(() => {
+                resizePreview();
+                if(state.processedData) Plotly.Plots.resize('chartContainer');
+            }, 300);
+        }
+
+        function toggleReport() {
+            const report = document.getElementById('reportPanel');
+            const icon = document.getElementById('reportToggleIcon');
+            isReportOpen = !isReportOpen;
+
+            if (isReportOpen) {
+                report.classList.remove('report-collapsed');
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                report.classList.add('report-collapsed');
+                icon.style.transform = 'rotate(180deg)';
+            }
+
+            setTimeout(() => {
+                resizePreview();
+                if(state.processedData) Plotly.Plots.resize('chartContainer');
+            }, 300);
+        }
+
+        function toggleRateChart() {
+            isRateChartVisible = !isRateChartVisible;
+            const btn = document.getElementById('toggleRateBtn');
+            btn.textContent = isRateChartVisible ? "開啟中" : "已隱藏";
+            btn.className = isRateChartVisible ? 
+                "bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs font-bold hover:bg-slate-300 transition-colors" : 
+                "bg-red-100 text-red-700 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition-colors";
+            
+            if(state.processedData) renderCharts();
+        }
+
+        // --- NEW: Ratio Logic ---
+        function updateAspectRatio(ratio) {
+            const wInput = document.getElementById('chartWidth');
+            const hInput = document.getElementById('chartHeight');
+            const w = parseFloat(wInput.value);
+            if (!isNaN(w) && w > 0) {
+                hInput.value = (w / ratio).toFixed(1);
+                resizePreview();
+            }
+        }
+
+        // Reset Logic
+        function resetApp() {
+            state.files = [null, null];
+            state.filesData = [null, null];
+            state.wb = [null, null];
+            state.mergedHeaders = [];
+            state.processedData = null;
+            state.reportData = null;
+            state.columnMap = { time1: -1, time2: -1, vol: -1, cur: -1, temps: [] };
+            state.tempConfig = [];
+            state.customAnnotations = [];
+            state.customEvents = [];
+
+            els.fileInputs.forEach(inp => inp.value = '');
+            els.pasteInputs.forEach(inp => inp.value = '');
+            els.sheetSelects.forEach(sel => sel.innerHTML = '');
+            els.sheetContainers.forEach(div => div.classList.add('hidden'));
+            
+            document.getElementById('headerRowIndex1').value = '';
+            document.getElementById('headerRowIndex2').value = '';
+            document.getElementById('thresholdVolDrop').value = '50';
+            document.getElementById('thresholdT1').value = '1';
+            document.getElementById('thresholdTtr').value = '10';
+            
+            document.getElementById('rangeVolMin').value = '0'; document.getElementById('rangeVolMax').value = '5';
+            document.getElementById('rangeTempMin').value = '0'; document.getElementById('rangeTempMax').value = '500';
+            document.getElementById('rangeCurMin').value = '0'; document.getElementById('rangeCurMax').value = '50';
+            document.getElementById('rangeRateMin').value = '0'; document.getElementById('rangeRateMax').value = '50';
+            
+            els.annotationList.innerHTML = '';
+            els.eventList.innerHTML = '';
+            els.tempColorSection.innerHTML = '';
+            els.seriesRenameContainer.innerHTML = '';
+            els.seriesRenameSection.classList.add('hidden');
+            els.mappingSection.classList.add('hidden');
+            els.reportPanel.classList.add('hidden');
+            els.processBtn.disabled = true;
+
+            isRateChartVisible = true;
+            document.getElementById('toggleRateBtn').textContent = "開啟中";
+            document.getElementById('toggleRateBtn').className = "bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs font-bold hover:bg-slate-300 transition-colors";
+
+            renderCharts(true);
+        }
+
+        const state = {
+            files: [null, null], filesData: [null, null], wb: [null, null], mergedHeaders: [], processedData: null, reportData: null,
+            columnMap: { time1: -1, time2: -1, vol: -1, cur: -1, temps: [] },
+            tempConfig: [], wb: [null, null],
+            config: { downsample: 1, filterOutliers: true },
+            inputMode: 'file',
+            customAnnotations: [], 
+            customEvents: []        
+        };
+
+        const PIXELS_PER_CM = 118; // 300 DPI approximation
+
+        const els = {
+            modeBtns: { file: document.getElementById('modeFileBtn'), paste: document.getElementById('modePasteBtn') },
+            modeContents: { file: document.getElementById('modeFileContent'), paste: document.getElementById('modePasteContent') },
+            fileInputs: [document.getElementById('fileInput1'), document.getElementById('fileInput2')],
+            pasteInputs: [document.getElementById('pasteInput1'), document.getElementById('pasteInput2')],
+            headerInputs: {
+                file: [document.getElementById('headerRowIndex1'), document.getElementById('headerRowIndex2')],
+                paste: [document.getElementById('headerRowIndex1_paste'), document.getElementById('headerRowIndex1_paste')]
+            },
+            sheetSelects: [document.getElementById('sheetSelect1'), document.getElementById('sheetSelect2')],
+            sheetContainers: [document.getElementById('sheetSelectContainer1'), document.getElementById('sheetSelectContainer2')],
+            encodingSelect: document.getElementById('encodingSelect'),
+            downsampleSelect: document.getElementById('downsampleRate'),
+            filterCheckbox: document.getElementById('filterOutliers'),
+            processBtn: document.getElementById('processBtn'),
+            chartContainer: document.getElementById('chartContainer'),
+            mappingSection: document.getElementById('columnMappingSection'),
+            f2TimeContainer: document.getElementById('f2TimeContainer'),
+            mapSelects: { time1: document.getElementById('mapTime1'), time2: document.getElementById('mapTime2'), vol: document.getElementById('mapVol'), cur: document.getElementById('mapCur'), temp: document.getElementById('mapTemp') },
+            applyMapBtn: document.getElementById('applyMappingBtn'),
+            tempColorSection: document.getElementById('tempColorSection'),
+            seriesRenameSection: document.getElementById('seriesRenameSection'),
+            seriesRenameContainer: document.getElementById('seriesRenameContainer'),
+            rateSourceSelect: document.getElementById('rateSource'),
+            reportPanel: document.getElementById('reportPanel'),
+            reportTableBody: document.getElementById('reportTableBody'),
+            globalVolDrop: document.getElementById('globalVolDrop'),
+            updateRangeBtn: document.getElementById('updateRangeBtn'),
+            exportBtn: document.getElementById('exportImageBtn'),
+            exportCsvBtn: document.getElementById('exportCsvBtn'),
+            titleX: document.getElementById('titleX'), titleVol: document.getElementById('titleVol'), titleTemp: document.getElementById('titleTemp'), titleCur: document.getElementById('titleCur'),
+            // New Input for Rate Title
+            titleRate: document.getElementById('titleRate'),
+            chartWidth: document.getElementById('chartWidth'), chartHeight: document.getElementById('chartHeight'),
+            lockRatio: document.getElementById('lockRatio'),
+            rangeTimeMin: document.getElementById('rangeTimeMin'), rangeTimeMax: document.getElementById('rangeTimeMax'),
+            annotationInput: document.getElementById('annotationInput'),
+            annotationSizeInput: document.getElementById('annotationSizeInput'),
+            addAnnotationBtn: document.getElementById('addAnnotationBtn'),
+            annotationList: document.getElementById('annotationList'),
+            eventList: document.getElementById('eventList'),
+            newEventTime: document.getElementById('newEventTime'),
+            newEventLabel: document.getElementById('newEventLabel'),
+            eventSizeInput: document.getElementById('eventSizeInput'),
+            addEventBtn: document.getElementById('addEventBtn'),
+            fontSizeDisplay: document.getElementById('fontSizeDisplay'),
+            lineWidthSlider: document.getElementById('lineWidthSlider'),
+            lineWidthDisplay: document.getElementById('lineWidthDisplay')
+        };
+
+        window.addEventListener('load', () => { resizePreview(); renderCharts(true); });
+        
+        // Debounced Resize
+        window.addEventListener('resize', () => { 
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                resizePreview();
+            }, 100);
+        });
+
+        // Ratio Controls
+        els.chartWidth.addEventListener('change', () => { 
+            if(els.lockRatio.checked) {
+                // Logic handled by manual input or buttons
+            }
+            resizePreview(); 
+        });
+        
+        els.chartWidth.addEventListener('input', () => {
+             if(els.lockRatio.checked) {
+                 const w = parseFloat(els.chartWidth.value);
+                 // If locking, we could calc H. But usually we let user type then calc.
+                 // For now, simpler to rely on buttons for ratio or manual entry.
+             }
+        });
+
+        // Ratio Buttons
+        document.querySelectorAll('.ratio-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const ratio = parseFloat(e.target.dataset.ratio);
+                updateAspectRatio(ratio);
+            });
+        });
+
+        els.chartHeight.addEventListener('change', () => { resizePreview(); });
+
+        els.modeBtns.file.addEventListener('click', () => setInputMode('file'));
+        els.modeBtns.paste.addEventListener('click', () => setInputMode('paste'));
+        els.fileInputs.forEach((inp, idx) => inp.addEventListener('change', (e) => handleFileUpload(e, idx)));
+        els.sheetSelects.forEach((sel, idx) => sel.addEventListener('change', () => parseFileContent(idx)));
+        els.pasteInputs.forEach((txt, idx) => {
+            txt.addEventListener('input', () => handleManualPaste(idx));
+            txt.addEventListener('change', () => handleManualPaste(idx));
+        });
+        els.processBtn.addEventListener('click', () => { parseHeaders(); });
+        els.applyMapBtn.addEventListener('click', () => { updateColumnMappingFromUI(true); processAndRender(); });
+        els.updateRangeBtn.addEventListener('click', () => { if(state.processedData) { generateReports(state.processedData); renderCharts(); }});
+        els.exportBtn.addEventListener('click', exportChart);
+        els.exportCsvBtn.addEventListener('click', exportCSV);
+        
+        els.rateSourceSelect.addEventListener('change', () => { if(state.processedData) renderCharts(); });
+        ['colorVol', 'colorCur', 'titleX', 'titleVol', 'titleTemp', 'titleCur', 'titleRate'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => { if(state.processedData) renderCharts(); });
+        });
+        
+        document.getElementById('fontSizeSlider').addEventListener('input', (e) => {
+            els.fontSizeDisplay.textContent = e.target.value;
+            if(state.processedData) renderCharts();
+        });
+
+        document.getElementById('lineWidthSlider').addEventListener('input', (e) => {
+            els.lineWidthDisplay.textContent = e.target.value;
+            if(state.processedData) renderCharts();
+        });
+
+        // --- NEW FEATURES LISTENERS ---
+        els.addAnnotationBtn.addEventListener('click', addFreeAnnotation);
+        els.addEventBtn.addEventListener('click', addEventInputRow);
+
+        // --- PREVIEW RESIZE LOGIC ---
+        function resizePreview() {
+            const wrapper = document.getElementById('chartWrapper');
+            const container = document.getElementById('chartContainer');
+            if (!wrapper || !container) return;
+
+            const exportW_cm = parseFloat(document.getElementById('chartWidth').value) || 16;
+            const exportH_cm = parseFloat(document.getElementById('chartHeight').value) || 8;
+            const aspect = exportW_cm / exportH_cm;
+
+            const pad = 32; 
+            const availW = wrapper.clientWidth - pad;
+            const availH = wrapper.clientHeight - pad;
+
+            let w = availW;
+            let h = w / aspect;
+
+            if (h > availH) {
+                h = availH;
+                w = h * aspect;
+            }
+
+            container.style.width = `${w}px`;
+            container.style.height = `${h}px`;
+            
+            if(container.data) {
+                Plotly.Plots.resize(container);
+            }
+        }
+
+        function setInputMode(mode) {
+            state.inputMode = mode;
+            if(mode === 'file') {
+                els.modeBtns.file.className = els.modeBtns.file.className.replace('tab-inactive', 'tab-active');
+                els.modeBtns.paste.className = els.modeBtns.paste.className.replace('tab-active', 'tab-inactive');
+                els.modeContents.file.classList.remove('hidden');
+                els.modeContents.paste.classList.add('hidden');
+            } else {
+                els.modeBtns.paste.className = els.modeBtns.paste.className.replace('tab-inactive', 'tab-active');
+                els.modeBtns.file.className = els.modeBtns.file.className.replace('tab-active', 'tab-inactive');
+                els.modeContents.paste.classList.remove('hidden');
+                els.modeContents.file.classList.add('hidden');
+            }
+            checkFilesReady();
+        }
+
+        function handleFileUpload(e, fileIdx) {
+            const file = e.target.files[0];
+            if (!file) return;
+            state.files[fileIdx] = file;
+            const isExcel = file.name.match(/\.(xlsx|xlsm|xls)$/);
+            const reader = new FileReader();
+            if (isExcel) {
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    state.wb[fileIdx] = workbook;
+                    els.sheetContainers[fileIdx].classList.remove('hidden');
+                    els.sheetSelects[fileIdx].innerHTML = '';
+                    workbook.SheetNames.forEach(sheet => els.sheetSelects[fileIdx].add(new Option(sheet, sheet)));
+                    parseFileContent(fileIdx);
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                els.sheetContainers[fileIdx].classList.add('hidden');
+                state.wb[fileIdx] = null;
+                reader.onload = (e) => {
+                    const rows = e.target.result.split(/\r\n|\n/);
+                    state.filesData[fileIdx] = { rawRows: rows };
+                    autoDetectHeader(fileIdx);
+                };
+                reader.readAsText(file, els.encodingSelect.value);
+            }
+        }
+
+        function handleManualPaste(fileIdx) {
+            const text = els.pasteInputs[fileIdx].value;
+            if (!text.trim()) { state.filesData[fileIdx] = null; return; }
+            const rows = text.split(/\r\n|\n/);
+            state.filesData[fileIdx] = { rawRows: rows };
+            autoDetectHeader(fileIdx);
+        }
+
+        function parseFileContent(fileIdx) {
+            if (state.wb[fileIdx]) {
+                const sheetName = els.sheetSelects[fileIdx].value;
+                const rows = XLSX.utils.sheet_to_csv(state.wb[fileIdx].Sheets[sheetName]).split(/\r\n|\n/);
+                state.filesData[fileIdx] = { rawRows: rows };
+                autoDetectHeader(fileIdx);
+            }
+        }
+
+        function getHeaderInput(fileIdx) { return els.headerInputs[state.inputMode][fileIdx]; }
+
+        function autoDetectHeader(fileIdx) {
+            const rows = state.filesData[fileIdx].rawRows;
+            let headerIndex = -1;
+            const keywords = ['time', 'vol', 'temp', 'step', 'current', 'capacity', '時間', '電壓', '溫度'];
+            for (let i = 0; i < Math.min(rows.length, 100); i++) {
+                if (keywords.filter(k => rows[i].toLowerCase().includes(k)).length >= 2) { headerIndex = i; break; }
+            }
+            const inputEl = getHeaderInput(fileIdx);
+            if(inputEl) inputEl.value = (headerIndex === -1 ? 0 : headerIndex) + 1;
+            checkFilesReady();
+        }
+
+        function checkFilesReady() {
+            if (state.filesData[0]) {
+                els.processBtn.disabled = false;
+                if(state.filesData[1]) els.f2TimeContainer.classList.remove('hidden');
+                else els.f2TimeContainer.classList.add('hidden');
+            } else {
+                els.processBtn.disabled = true;
+            }
+        }
+
+        function parseHeaders() {
+            state.mergedHeaders = [];
+            state.filesData.forEach((fd, i) => {
+                if(!fd) return;
+                const inputEl = getHeaderInput(i);
+                const rIdx = parseInt(inputEl.value) - 1;
+                const row = fd.rawRows[rIdx];
+                if (!row) return;
+                row.split(row.includes('\t') ? '\t' : ',').map(h => h.trim()).forEach((h, cIdx) => {
+                    state.mergedHeaders.push({ label: `[F${i+1}] ${h}`, fileIdx: i, colIdx: cIdx, rawLabel: h });
+                });
+            });
+            populateDropdowns();
+            autoMapColumns();
+            els.mappingSection.classList.remove('hidden');
+        }
+
+        function populateDropdowns() {
+            const createOpt = (mh, idx) => new Option(mh.label, idx);
+            Object.values(els.mapSelects).forEach(sel => sel.innerHTML = '');
+            els.mapSelects.cur.add(new Option('-- 無 (Hidden) --', '-1')); 
+            state.mergedHeaders.forEach((mh, idx) => {
+                if (mh.fileIdx === 0) els.mapSelects.time1.add(createOpt(mh, idx));
+                if (mh.fileIdx === 1) els.mapSelects.time2.add(createOpt(mh, idx));
+                els.mapSelects.vol.add(createOpt(mh, idx));
+                els.mapSelects.cur.add(createOpt(mh, idx));
+                els.mapSelects.temp.add(createOpt(mh, idx));
+            });
+        }
+
+        function autoMapColumns() {
+            const h = state.mergedHeaders;
+            const find = (keys, fIdx = -1) => h.findIndex(mh => {
+                if (fIdx !== -1 && mh.fileIdx !== fIdx) return false;
+                return keys.some(k => mh.rawLabel.toLowerCase().includes(k));
+            });
+            els.mapSelects.time1.value = find(['time', 'test time', '時間'], 0);
+            if(state.filesData[1]) els.mapSelects.time2.value = find(['time', 'test time'], 1);
+            els.mapSelects.vol.value = find(['vol', 'voltage', 'v_', '電壓']);
+            els.mapSelects.cur.value = find(['cur', 'current', 'amp', '電流']);
+            const tempIndices = [];
+            h.forEach((mh, idx) => {
+                if (['temp', 'aux', 'deg', 't1', 't2', 'couple', '溫度'].some(k => mh.rawLabel.toLowerCase().includes(k))) tempIndices.push(idx);
+            });
+            Array.from(els.mapSelects.temp.options).forEach(opt => {
+                if (tempIndices.includes(parseInt(opt.value))) opt.selected = true;
+            });
+            updateColumnMappingFromUI(true);
+        }
+
+        function updateColumnMappingFromUI(generateColors = false) {
+            state.columnMap.time1 = parseInt(els.mapSelects.time1.value);
+            state.columnMap.time2 = parseInt(els.mapSelects.time2.value);
+            state.columnMap.vol = parseInt(els.mapSelects.vol.value);
+            state.columnMap.cur = parseInt(els.mapSelects.cur.value);
+            const selectedTemps = Array.from(els.mapSelects.temp.selectedOptions).map(opt => ({ idx: parseInt(opt.value), label: opt.text.replace(/^\[F\d+\]\s*/, '') }));
+            if (generateColors) {
+                // Revert to rainbow colors for temp series
+                const defaultColors = ['#d62728', '#ff7f0e', '#9467bd', '#e377c2', '#8c564b', '#17becf', '#bcbd22'];
+                state.tempConfig = selectedTemps.map((t, i) => ({ headerIdx: t.idx, label: t.label, color: defaultColors[i % defaultColors.length] }));
+                renderTempColorInputs();
+                renderRateSourceOptions();
+                renderSeriesRenameInputs();
+            } else {
+                state.tempConfig.forEach(c => {
+                    const match = selectedTemps.find(t => t.idx === c.headerIdx);
+                    if(match) c.label = match.label;
+                });
+            }
+            state.columnMap.temps = state.tempConfig.map(c => c.headerIdx);
+        }
+
+        function renderTempColorInputs() {
+            els.tempColorSection.innerHTML = '<label class="text-[10px] text-slate-500 block border-b border-slate-200 pb-1 mb-1">溫度曲線顏色</label>';
+            state.tempConfig.forEach((cfg, idx) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-2 mb-1 bg-white border border-slate-300 p-1 rounded';
+                div.innerHTML = `<input type="color" value="${cfg.color}" data-idx="${idx}" class="temp-color-picker w-5 h-5 rounded cursor-pointer border-none bg-transparent"><span class="text-[10px] text-slate-700 truncate w-32" title="${cfg.label}">${cfg.label}</span>`;
+                els.tempColorSection.appendChild(div);
+            });
+            document.querySelectorAll('.temp-color-picker').forEach(pk => {
+                pk.addEventListener('change', (e) => {
+                    state.tempConfig[e.target.dataset.idx].color = e.target.value;
+                    if(state.processedData) renderCharts();
+                });
+            });
+        }
+
+        function renderSeriesRenameInputs() {
+            const container = els.seriesRenameContainer;
+            container.innerHTML = '';
+            container.innerHTML += `<div class="flex gap-1 items-center mb-1"><span class="w-8 text-[10px] text-slate-500">Vol:</span><input type="text" id="renameVol" value="Voltage" class="vdi-input w-full text-xs px-1 rounded"></div>`;
+            if (state.columnMap.cur !== -1) container.innerHTML += `<div class="flex gap-1 items-center mb-1"><span class="w-8 text-[10px] text-slate-500">Cur:</span><input type="text" id="renameCur" value="Current" class="vdi-input w-full text-xs px-1 rounded"></div>`;
+            state.tempConfig.forEach((cfg, idx) => {
+                container.innerHTML += `<div class="flex gap-1 items-center mb-1"><span class="w-8 text-[10px] text-slate-500">T${idx+1}:</span><input type="text" id="renameTemp${idx}" value="${cfg.label}" data-idx="${idx}" class="vdi-input w-full text-xs px-1 rounded rename-temp"></div>`;
+            });
+            els.seriesRenameSection.classList.remove('hidden');
+            container.querySelectorAll('input.rename-temp').forEach(inp => {
+                inp.addEventListener('change', (e) => {
+                    state.tempConfig[parseInt(e.target.dataset.idx)].label = e.target.value;
+                    renderTempColorInputs();
+                    if(state.processedData) { generateReports(state.processedData); renderCharts(); }
+                });
+            });
+            container.querySelectorAll('input:not(.rename-temp)').forEach(inp => inp.addEventListener('change', () => { if(state.processedData) renderCharts(); }));
+        }
+
+        function renderRateSourceOptions() {
+            els.rateSourceSelect.innerHTML = '<option value="max">Max Profile</option>';
+            state.tempConfig.forEach((cfg, idx) => els.rateSourceSelect.add(new Option(cfg.label, idx.toString())));
+        }
+
+        // --- NEW FEATURES: OBJECT MANAGEMENT ---
+        function addFreeAnnotation() {
+            const text = els.annotationInput.value;
+            const size = parseInt(els.annotationSizeInput.value) || 12;
+            if (!text) return;
+            const id = Date.now() + Math.random(); // Added random to avoid collision in same MS
+            state.customAnnotations.push({ 
+                id, 
+                text: `<b>${text}</b>`, 
+                x: 0.5, y: 0.5, 
+                xref: 'paper', yref: 'paper', // Important: Paper reference allows moving outside axes
+                size: size 
+            });
+            els.annotationInput.value = '';
+            renderAnnotationList();
+            renderCharts();
+        }
+
+        function removeAnnotation(id) {
+            state.customAnnotations = state.customAnnotations.filter(a => a.id !== id);
+            renderAnnotationList();
+            renderCharts();
+        }
+
+        function renderAnnotationList() {
+            els.annotationList.innerHTML = '';
+            state.customAnnotations.forEach(a => {
+                const el = document.createElement('div');
+                // Updated Style for List Item (Flexbox, centered, border)
+                el.className = 'flex items-center gap-1 py-1 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors';
+                
+                // Remove <b> tags for list display
+                const displayText = a.text.replace(/<\/?b>/g, '');
+                
+                // Updated Inner HTML: Button on Left, Red, Bold
+                el.innerHTML = `
+                    <button class="text-red-500 hover:text-red-700 font-bold px-1.5 text-sm leading-none" onclick="window.removeAnnotation(${a.id})" title="刪除">×</button>
+                    <span class="text-xs text-slate-700 flex-1 truncate" title="${displayText} (Size: ${a.size})">${displayText}</span>
+                `;
+                els.annotationList.appendChild(el);
+            });
+        }
+        // Expose to global for onclick
+        window.removeAnnotation = removeAnnotation;
+
+        function addEventInputRow() {
+            const t = parseFloat(els.newEventTime.value);
+            const l = els.newEventLabel.value;
+            const size = parseInt(els.eventSizeInput.value) || 12;
+            if(isNaN(t) || !l) return;
+            const id = Date.now() + Math.random(); // Added random
+            state.customEvents.push({ id, time: t, label: l, size: size });
+            els.newEventTime.value = ''; els.newEventLabel.value = '';
+            renderEventList();
+            renderCharts();
+        }
+
+        function removeEvent(id) {
+            state.customEvents = state.customEvents.filter(e => e.id !== id);
+            renderEventList();
+            renderCharts();
+        }
+
+        function renderEventList() {
+            els.eventList.innerHTML = '';
+            state.customEvents.sort((a,b)=>a.time-b.time).forEach(e => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center gap-1 py-1 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors';
+                el.innerHTML = `
+                    <button class="text-red-500 hover:text-red-700 font-bold px-1.5 text-sm leading-none" onclick="window.removeEvent(${e.id})" title="刪除">×</button>
+                    <span class="text-xs text-slate-700 flex-1 truncate" title="${e.time}s: ${e.label} (Size: ${e.size || 12})">${e.time}s: ${e.label}</span>
+                `;
+                els.eventList.appendChild(el);
+            });
+        }
+        window.removeEvent = removeEvent;
+
+        // --- PROCESSING ---
+        function processAndRender() {
+            const { columnMap, tempConfig, mergedHeaders, filesData } = state;
+            const downsample = parseInt(els.downsampleSelect.value);
+            
+            if (columnMap.time1 === -1 || columnMap.vol === -1) { alert("請設定時間與電壓欄位"); return; }
+
+            const series = { vol:{x:[],y:[]}, cur:{x:[],y:[]}, temps: tempConfig.map(() => ({x:[], y:[]})), maxTempProfile: [], maxTempRate: [] };
+            
+            const parseFile = (fileIdx, colIndices, type) => {
+                const fd = filesData[fileIdx];
+                if (!fd) return;
+                const inputEl = getHeaderInput(fileIdx);
+                const headerRow = parseInt(inputEl.value) - 1;
+                const timeColIdx = fileIdx === 0 ? mergedHeaders[columnMap.time1].colIdx : (columnMap.time2 !== -1 ? mergedHeaders[columnMap.time2].colIdx : -1);
+                if (timeColIdx === -1) return;
+                let t0 = null;
+                for (let i = headerRow + 1; i < fd.rawRows.length; i += downsample) {
+                    const row = fd.rawRows[i]; if(!row || !row.trim()) continue;
+                    const cells = row.split(row.includes('\t') ? '\t' : ',');
+                    let t = parseFloat(cells[timeColIdx]);
+                    if (isNaN(t)) continue;
+                    // Removed conv.t multiplication
+                    if (t0 === null) t0 = t;
+                    t -= t0;
+                    colIndices.forEach(item => {
+                        let val = parseFloat(cells[item.colIdx]);
+                        // Removed conv.v and conv.c multiplications
+                        if (type === 'temp' && els.filterCheckbox.checked && (isNaN(val) || val > 1300 || val < -100)) return;
+                        item.target.x.push(t); item.target.y.push(isNaN(val) ? 0 : val);
+                    });
+                }
+            };
+
+            const f1Instr = [], f2Instr = [];
+            const addInstr = (colIdx, target, type) => (mergedHeaders[colIdx].fileIdx === 0 ? f1Instr : f2Instr).push({ colIdx: mergedHeaders[colIdx].colIdx, target, type });
+            
+            addInstr(columnMap.vol, series.vol, 'vol');
+            if(columnMap.cur !== -1) addInstr(columnMap.cur, series.cur, 'cur');
+            tempConfig.forEach((cfg, i) => addInstr(cfg.headerIdx, series.temps[i], 'temp'));
+
+            parseFile(0, f1Instr);
+            if(filesData[1]) parseFile(1, f2Instr);
+
+            // Calc Max Temp Profile
+            for(let i=0; i<series.vol.x.length; i++) {
+                let maxT = -Infinity;
+                series.temps.forEach(t => {
+                    if(t.y[i] !== undefined && t.y[i] > maxT) maxT = t.y[i];
+                });
+                series.maxTempProfile.push(maxT === -Infinity ? 0 : maxT);
+            }
+            // Calc Derivative
+            series.maxTempRate = calculateDerivative(series.vol.x, series.maxTempProfile);
+            series.temps.forEach(s => { s.rate = calculateDerivative(s.x, s.y); });
+            
+            state.processedData = series;
+
+            let maxTime = Math.max((series.vol.x[series.vol.x.length-1]||0), ...series.temps.map(t=>t.x[t.x.length-1]||0));
+            document.getElementById('rangeTimeMin').value = 0;
+            document.getElementById('rangeTimeMax').value = Math.ceil(maxTime > 0 ? maxTime : 3600);
+
+            generateReports(series);
+            renderCharts();
+            els.reportPanel.classList.remove('hidden');
+        }
+
+        function calculateDerivative(time, values) {
+            const d = [];
+            for (let i = 0; i < time.length; i++) {
+                if (i === 0) d.push(0);
+                else {
+                    const dt = time[i] - time[i-1];
+                    const rate = dt <= 0 ? d[i-1] : ((values[i] - values[i-1]) / dt) * 60;
+                    d.push(rate);
+                }
+            }
+            return d;
+        }
+
+        function generateReports(series) {
+            const th = { 
+                volDrop: parseFloat(document.getElementById('thresholdVolDrop').value),
+                T1: parseFloat(document.getElementById('thresholdT1').value),
+                Ttr: parseFloat(document.getElementById('thresholdTtr').value)
+            };
+            
+            // OCV Drop Logic
+            let volDropTime = null;
+            const v = series.vol;
+            for (let i = 0; i < v.x.length; i++) {
+                let j = i;
+                while (j >= 0 && (v.x[i] - v.x[j]) < 1.0) j--;
+                if (j >= 0 && (v.y[j] - v.y[i]) > (th.volDrop / 1000)) { volDropTime = v.x[i]; break; }
+            }
+            els.globalVolDrop.textContent = volDropTime ? `@ ${volDropTime.toFixed(1)} s` : "None";
+            
+            // Report Table Logic
+            state.reportData = [];
+            let html = '';
+            
+            series.temps.forEach((tData, idx) => {
+                const customLabel = state.tempConfig[idx].label;
+                
+                // 1. Find T1 (Trigger)
+                // Intelligent Logic: Rate > Moving Average (60s) + Threshold
+                let idxT1 = -1;
+                const lookback = 60; // seconds
+                for (let i = 5; i < tData.rate.length; i++) {
+                    const tCurr = tData.x[i];
+                    if (tCurr < lookback) continue; // Skip early seconds
+                    
+                    // Calculate Moving Average
+                    let sum = 0;
+                    let count = 0;
+                    for (let j = i - 1; j >= 0; j--) {
+                        if (tData.x[j] < tCurr - lookback) break;
+                        sum += tData.rate[j];
+                        count++;
+                    }
+                    const avgRate = count > 0 ? sum / count : 0;
+                    
+                    if (tData.rate[i] > avgRate + th.T1) {
+                        idxT1 = i; 
+                        break; 
+                    }
+                }
+                const t1 = idxT1 >= 0 ? { t: tData.x[idxT1], val: tData.y[idxT1], rate: tData.rate[idxT1] } : null;
+
+                // 2. Find Ttr (Runaway) -> Absolute threshold
+                let idxTtr = -1;
+                for (let i = 0; i < tData.rate.length; i++) {
+                    if (tData.rate[i] >= th.Ttr) { idxTtr = i; break; }
+                }
+                const ttr = idxTtr >= 0 ? { t: tData.x[idxTtr], val: tData.y[idxTtr], rate: tData.rate[idxTtr] } : null;
+
+                // 3. Find Max Temp (Logic: After Runaway if exists, else Global Max)
+                let maxT = -Infinity;
+                const searchStartIndex = idxTtr >= 0 ? idxTtr : 0; 
+                
+                if (tData.y.length > 0) {
+                    for (let i = searchStartIndex; i < tData.y.length; i++) {
+                        if (tData.y[i] > maxT) maxT = tData.y[i];
+                    }
+                } else {
+                    maxT = 0;
+                }
+
+                // Format Strings
+                const fmtEvent = (e) => e ? `${e.val.toFixed(1)}°C @ ${e.t.toFixed(0)}s (${e.rate.toFixed(1)}°C/min)` : '-';
+                
+                state.reportData.push({ label: customLabel, maxT, t1, ttr });
+                
+                html += `<tr class="hover:bg-indigo-50/30 border-b border-indigo-100/30">
+                    <td class="px-4 py-2 font-medium truncate max-w-[100px]" style="color:${state.tempConfig[idx].color}" title="${customLabel}">${customLabel}</td>
+                    <td class="px-4 py-2 text-[10px]">${fmtEvent(t1)}</td>
+                    <td class="px-4 py-2 text-[10px] font-bold text-red-800">${fmtEvent(ttr)}</td>
+                    <td class="px-4 py-2 font-bold text-red-600">${maxT.toFixed(1)}°C</td>
+                </tr>`;
+            });
+            els.reportTableBody.innerHTML = html;
+        }
+
+        function exportChart() {
+            const gd = document.getElementById('chartContainer');
+            if (!gd || !state.processedData) return;
+
+            // NEW LOGIC: Use Plotly's native 'scale' for high-res output
+            // This ensures WYSIWYG (What You See Is What You Get) but sharper.
+            // 1. Get Target Dimensions in Pixels (at 300 DPI)
+            const w_cm = parseFloat(document.getElementById('chartWidth').value) || 16;
+            const h_cm = parseFloat(document.getElementById('chartHeight').value) || 8;
+            const targetW = Math.round(w_cm * PIXELS_PER_CM);
+            
+            // 2. Get Current Screen Dimensions
+            const screenW = gd._fullLayout.width;
+            
+            // 3. Calculate Scale Factor
+            // We want the output image to have 'targetW' pixels width.
+            // Plotly's 'scale' parameter multiplies the current screen dimensions.
+            const scaleFactor = targetW / screenW;
+
+            // 4. Download with Scale
+            // We do NOT set width/height explicitly to targetW/targetH because that changes layout (relative font sizes).
+            // Instead we set width/height to *current* screen size and let 'scale' multiply it up.
+            Plotly.downloadImage(gd, { 
+                format: 'png', 
+                width: gd._fullLayout.width, 
+                height: gd._fullLayout.height, 
+                scale: scaleFactor,
+                filename: 'Battery_Report', 
+                setBackground: 'white' 
+            });
+        }
+
+        function exportCSV() {
+            if (!state.processedData) return;
+            const series = state.processedData;
+            let csv = `=== Analysis Report ===\nOCV Drop (>50mV/1s), ${document.getElementById('globalVolDrop').textContent}\n\nChannel,Trigger (T1),Runaway (Ttr),Max Temp\n`;
+            
+            if (state.reportData) {
+                state.reportData.forEach(r => { 
+                    const fmt = (e) => e ? `${e.val.toFixed(1)}C @ ${e.t.toFixed(0)}s (Rate: ${e.rate.toFixed(1)})` : '-'; 
+                    csv += `${r.label},${fmt(r.t1)},${fmt(r.ttr)},${r.maxT.toFixed(1)}C\n`; 
+                });
+            }
+            
+            csv += "\n=== Processed Data ===\n";
+            let headers = ["Time (s)", "Voltage (V)"]; if (series.cur.y.length) headers.push("Current (A)");
+            series.temps.forEach((t, i) => headers.push(`${state.tempConfig[i].label} Temp (C)`, `${state.tempConfig[i].label} Rate (C/min)`));
+            csv += headers.join(",") + "\n";
+            const len = series.vol.x.length;
+            for (let i = 0; i < len; i++) {
+                let row = [series.vol.x[i].toFixed(2), series.vol.y[i].toFixed(4)];
+                if (series.cur.y.length) row.push(series.cur.y[i] !== undefined ? series.cur.y[i].toFixed(3) : "");
+                series.temps.forEach(t => row.push(t.y[i] !== undefined ? t.y[i].toFixed(2) : "", t.rate[i] !== undefined ? t.rate[i].toFixed(2) : ""));
+                csv += row.join(",") + "\n";
+            }
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            link.download = `Battery_Data_Export_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        function renderCharts(isEmpty = false) {
+            const lineWidth = parseFloat(document.getElementById('lineWidthSlider').value) || 2.5;
+            const layoutConfig = {
+                autosize: true, paper_bgcolor: 'white', plot_bgcolor: 'white',
+                font: { family: 'Arial, sans-serif', size: parseInt(document.getElementById('fontSizeSlider').value), color: '#334155' },
+                margin: { l: 80, r: 80, t: 80, b: 80 }, // Balanced margins
+            };
+
+            if (isEmpty || !state.processedData) {
+                // Resize preview call is handled by init/resize events, but ensures container has size
+                resizePreview();
+                Plotly.newPlot('chartContainer', [], { ...layoutConfig, title: {text: 'Waiting for Data...', font:{size: 20, color:'#94a3b8'}}, xaxis: {showgrid:false, zeroline:false, showticklabels:false}, yaxis: {showgrid:false, zeroline:false, showticklabels:false} });
+                return;
+            }
+
+            // Ensure size is correct before plotting
+            resizePreview();
+
+            const series = state.processedData;
+            const hasCur = series.cur.y.length > 0;
+            const ranges = {
+                vol: [parseFloat(document.getElementById('rangeVolMin').value), parseFloat(document.getElementById('rangeVolMax').value)],
+                temp: [parseFloat(document.getElementById('rangeTempMin').value), parseFloat(document.getElementById('rangeTempMax').value)],
+                cur: [parseFloat(document.getElementById('rangeCurMin').value), parseFloat(document.getElementById('rangeCurMax').value)],
+                rate: [parseFloat(document.getElementById('rangeRateMin').value), parseFloat(document.getElementById('rangeRateMax').value)]
+            };
+            const calcDtick = ([min, max]) => (max - min) / 5;
+            const traces = [];
+            
+            traces.push({ x: series.vol.x, y: series.vol.y, name: document.getElementById('renameVol').value, yaxis: 'y1', type: 'scatter', mode: 'lines', line: { color: document.getElementById('colorVol').value, width: lineWidth } });
+            if (hasCur) traces.push({ x: series.cur.x, y: series.cur.y, name: document.getElementById('renameCur').value, yaxis: 'y3', type: 'scatter', mode: 'lines', line: { color: document.getElementById('colorCur').value, width: lineWidth, dash: 'dot' } });
+            series.temps.forEach((t, i) => traces.push({ x: t.x, y: t.y, name: state.tempConfig[i].label, yaxis: 'y2', type: 'scatter', mode: 'lines', line: { color: state.tempConfig[i].color, width: lineWidth } }));
+            
+            const rateSrc = els.rateSourceSelect.value;
+            let rateData = (rateSrc === 'max' && series.temps.length) ? { x: series.temps[0].x, y: series.temps[0].rate, name: 'Max Rate' } : (series.temps[parseInt(rateSrc)] ? { x: series.temps[parseInt(rateSrc)].x, y: series.temps[parseInt(rateSrc)].rate, name: state.tempConfig[parseInt(rateSrc)].label + ' Rate' } : {x:[],y:[],name:''});
+            
+            // Only add rate trace if visible
+            if (isRateChartVisible) {
+                traces.push({ x: rateData.x, y: rateData.y, name: rateData.name, yaxis: 'y4', xaxis: 'x2', type: 'scatter', mode: 'lines', line: { color: '#f97316', width: lineWidth * 0.75 } });
+            }
+
+            const axisDomainEnd = hasCur ? 0.85 : 0.92;
+            
+            // Layout Logic for Toggle
+            // If Rate visible: Main chart uses domain [0.4, 1] (or adjusted). Rate uses [0, 0.25].
+            // If Rate hidden: Main chart uses domain [0, 1]. Rate hidden.
+            const mainYDomain = isRateChartVisible ? [0.40, 1] : [0, 1];
+            const rateYDomain = isRateChartVisible ? [0, 0.25] : [0, 0]; // Effectively hidden
+            
+            // Common Axis Config
+            const commonAxis = { 
+                showgrid: true, zeroline: false, mirror: true, showline: true, linewidth: 2, linecolor: '#94a3b8', 
+                gridcolor: 'rgba(148, 163, 184, 0.2)', ticks: 'outside', tickwidth: 2, ticklen: 5
+            }; 
+
+            // --- Shapes (Event Lines) ---
+            const shapes = [];
+            const annotations = [...state.customAnnotations];
+
+            state.customEvents.forEach(evt => {
+                shapes.push({
+                    type: 'line', x0: evt.time, x1: evt.time, y0: 0, y1: 1, xref: 'x', yref: 'paper',
+                    line: { color: '#94a3b8', width: 1, dash: 'dot' }
+                });
+                
+                let dataInfo = '';
+                const idx = series.vol.x.findIndex(t => t >= evt.time);
+                if (idx !== -1) {
+                    const v = series.vol.y[idx];
+                    let t = 0; let r = 0; let tColor = '#f97316';
+                    if(rateSrc === 'max') {
+                        t = series.maxTempProfile[idx]; r = series.maxTempRate[idx];
+                    } else {
+                        const k = parseInt(rateSrc);
+                        if(series.temps[k]) { t = series.temps[k].y[idx]; r = series.temps[k].rate[idx]; tColor = state.tempConfig[k].color; }
+                    }
+
+                    // Info Box (Annotation)
+                    const fontSize = evt.size || 12;
+                    annotations.push({
+                        x: evt.time, y: 1, xref: 'x', yref: 'paper',
+                        // Fixed: First line also follows font size now
+                        text: `<span style="font-size:${fontSize}px;font-weight:bold">${evt.label} (${evt.time}s)</span>;<br>V: ${v.toFixed(2)} V,<br><span style="color:${tColor};font-weight:bold;font-size:${fontSize}px">T: ${t.toFixed(1)} °C (${r.toFixed(1)} °C/min)</span>`,
+                        showarrow: true, arrowhead: 0, ax: 40, ay: -40, align: 'left',
+                        bgcolor: '#ffffff', bordercolor: '#cbd5e1', borderwidth: 1, borderpad: 6,
+                        font: { size: fontSize, color: '#334155' }, opacity: 0.95
+                    });
+                }
+            });
+            
+            // Process Custom Annotations (No arrow for text boxes)
+            state.customAnnotations.forEach(a => {
+                a.showarrow = false; // Force no arrow
+                // Add font size property
+                a.font = { size: a.size || 12, color: '#334155' };
+                a.xref = 'paper';
+                a.yref = 'paper';
+            });
+
+            const layout = {
+                ...layoutConfig,
+                shapes: shapes,
+                annotations: annotations,
+                showlegend: true, legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: 1.15, bgcolor: 'rgba(255,255,255,0.8)', bordercolor: '#cbd5e1', borderwidth: 1 },
+                grid: { rows: 2, columns: 1, pattern: 'independent' },
+                
+                // Main X-Axis: 
+                // If rate chart is visible: hide tick labels (shared with bottom).
+                // If rate chart hidden: SHOW tick labels.
+                xaxis: { 
+                    ...commonAxis, 
+                    domain: [0, axisDomainEnd], 
+                    // FIX: Hide title if rate chart is visible (title belongs to bottom axis)
+                    title: { text: isRateChartVisible ? "" : els.titleX.value, standoff: 15 }, 
+                    anchor: 'y1', 
+                    tickformat: ',', 
+                    range: [parseFloat(els.rangeTimeMin.value), parseFloat(els.rangeTimeMax.value)],
+                    showticklabels: !isRateChartVisible // Toggle labels
+                },
+                
+                // Y-Axis Alignment Fix: Fixed left margin (80) + fixed standoff (20) + NO automargin
+                yaxis: { 
+                    ...commonAxis, 
+                    title: { text: els.titleVol.value, standoff: 5 }, // Standoff reduced to pull title closer (aligned with bottom)
+                    titlefont: { color: '#0000FF' }, // Pure Blue
+                    tickfont: { color: '#0000FF' },
+                    range: ranges.vol, dtick: calcDtick(ranges.vol), side: 'left', 
+                    domain: mainYDomain, // DYNAMIC DOMAIN
+                    automargin: false // Explicitly disable to force alignment with bottom chart
+                },
+                
+                // Y-Axis 2 (Temp): Inner Right, Orange
+                yaxis2: { 
+                    ...commonAxis, 
+                    automargin: true, 
+                    title: { text: els.titleTemp.value, standoff: 15 }, 
+                    titlefont: { color: '#FFA500' }, // Orange
+                    tickfont: { color: '#FFA500' },
+                    range: ranges.temp, dtick: calcDtick(ranges.temp), side: 'right', position: axisDomainEnd, overlaying: 'y', showgrid: false 
+                },
+                
+                // Y-Axis 3 (Current): Outer Right, Red
+                yaxis3: { 
+                    ...commonAxis, 
+                    visible: hasCur, 
+                    title: { text: els.titleCur.value, standoff: 15 }, 
+                    titlefont: { color: '#FF0000' }, // Red
+                    tickfont: { color: '#FF0000' },
+                    range: ranges.cur, dtick: calcDtick(ranges.cur), side: 'right', position: 0.94, overlaying: 'y', showgrid: false 
+                },
+                
+                xaxis2: { ...commonAxis, domain: [0, axisDomainEnd], title: { text: els.titleX.value, standoff: 15 }, anchor: 'y4', matches: 'x', tickformat: ',' },
+                
+                // Y-Axis 4 (Rate): Bottom sub-plot. Shift standoff to 5 to move title RIGHT towards axis
+                yaxis4: { 
+                    ...commonAxis, 
+                    title: { text: document.getElementById('titleRate').value, standoff: 5 }, // Standoff matched to top axis
+                    range: ranges.rate, dtick: calcDtick(ranges.rate), 
+                    domain: rateYDomain, // DYNAMIC DOMAIN
+                    anchor: 'x2',
+                    automargin: false, // Explicitly disable to force alignment
+                    visible: isRateChartVisible
+                }
+            };
+
+            // Capture annotation moves if existing chart
+            const plotDiv = document.getElementById('chartContainer');
+            if (plotDiv.layout && plotDiv.layout.annotations) {
+                 // Retain current view/layout interactions if needed
+            }
+
+            Plotly.newPlot('chartContainer', traces, layout, { 
+                responsive: true, 
+                editable: true, 
+                edits: {
+                    annotationPosition: true,
+                    annotationText: false,
+                    axisTitleText: false,
+                    legendPosition: true, 
+                    shapePosition: false
+                } 
+            }).then(gd => {
+                gd.on('plotly_relayout', (eventdata) => {
+                    if (eventdata['shapes[0].x0']) return; 
+                    const newAnns = gd.layout.annotations;
+                    if(!newAnns) return;
+                    state.customAnnotations.forEach((custom, i) => {
+                        if (newAnns[i]) {
+                            custom.x = newAnns[i].x;
+                            custom.y = newAnns[i].y;
+                        }
+                    });
+                });
+            });
+        }
+    </script>
+</body>
+</html>
