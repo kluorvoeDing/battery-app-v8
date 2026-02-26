@@ -511,6 +511,11 @@
             state.tempConfig.forEach((cfg, idx) => {
                 container.innerHTML += `<div class="flex gap-1 items-center mb-1"><span class="w-8 text-[10px] text-slate-500">T${idx+1}:</span><input type="text" id="renameTemp${idx}" value="${cfg.label}" data-idx="${idx}" class="vdi-input w-full text-xs px-1 rounded rename-temp"></div>`;
             });
+
+            // 動態建立的欄位需回寫到 DOM 參考，避免圖表讀取 null.value
+            els.renameVol = container.querySelector('#renameVol');
+            els.renameCur = container.querySelector('#renameCur');
+
             els.seriesRenameSection.classList.remove('hidden');
             container.querySelectorAll('input.rename-temp').forEach(inp => {
                 inp.addEventListener('change', (e) => {
