@@ -23,6 +23,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
+    <!-- CDN 載入失敗時，自動回退到本機檔案（VDI/離線環境） -->
+    <script>
+        if (typeof Plotly === 'undefined') {
+            document.write('<script src="plotly-2.27.0.min.js"><\/script>');
+        }
+        if (typeof tailwind === 'undefined') {
+            document.write('<script src="tailwind.js"><\/script>');
+        }
+        if (typeof XLSX === 'undefined') {
+            document.write('<script src="xlsx.full.min.js"><\/script>');
+        }
+    </script>
+
     <!-- ========================================== -->
     <!--        MODE 2: OFFLINE (VDI 離線環境用)        -->
     <!--    (請將上方 MODE 1 註解掉，並解除下方註解)      -->

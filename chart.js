@@ -1,6 +1,6 @@
 (function () {
   function renderCharts(input) {
-    const { state, els, isEmpty=false } = input;
+    const { state, els, isEmpty=false, isRateChartVisible=true } = input;
 
             const lineWidth = parseFloat(els.lineWidthSlider.value) || 2.5;
             const layoutConfig = {
@@ -29,9 +29,11 @@
             };
             const calcDtick = ([min, max]) => (max - min) / 5;
             const traces = [];
+            const volLabel = els.renameVol?.value?.trim() || 'Voltage';
+            const curLabel = els.renameCur?.value?.trim() || 'Current';
             
-            traces.push({ x: series.vol.x, y: series.vol.y, name: els.renameVol.value, yaxis: 'y1', type: 'scatter', mode: 'lines', line: { color: els.colorVol.value, width: lineWidth } });
-            if (hasCur) traces.push({ x: series.cur.x, y: series.cur.y, name: els.renameCur.value, yaxis: 'y3', type: 'scatter', mode: 'lines', line: { color: els.colorCur.value, width: lineWidth, dash: 'dot' } });
+            traces.push({ x: series.vol.x, y: series.vol.y, name: volLabel, yaxis: 'y1', type: 'scatter', mode: 'lines', line: { color: els.colorVol.value, width: lineWidth } });
+            if (hasCur) traces.push({ x: series.cur.x, y: series.cur.y, name: curLabel, yaxis: 'y3', type: 'scatter', mode: 'lines', line: { color: els.colorCur.value, width: lineWidth, dash: 'dot' } });
             series.temps.forEach((t, i) => traces.push({ x: t.x, y: t.y, name: state.tempConfig[i].label, yaxis: 'y2', type: 'scatter', mode: 'lines', line: { color: state.tempConfig[i].color, width: lineWidth } }));
             
             const rateSrc = els.rateSourceSelect.value;
